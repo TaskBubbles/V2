@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#020617" />
+    <title>Task Bubbles</title>
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="apple-touch-icon" href="./icon-192.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+      }
+    </script>
+    <!-- Load Babel for in-browser compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+      body {
+        font-family: 'Poppins', sans-serif;
+        background-color: #020617;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+      ::-webkit-scrollbar {
+        display: none;
+      }
+      #root {
+        width: 100vw;
+        height: 100vh;
+      }
+      /* Loading State Styles */
+      #loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        background: #020617;
+        z-index: 9999;
+        transition: opacity 0.5s ease;
+      }
+      .loader {
+        width: 48px;
+        height: 48px;
+        border: 4px solid #FFF;
+        border-bottom-color: transparent;
+        border-radius: 50%;
+        animation: rotation 1s linear infinite;
+        margin-bottom: 16px;
+      }
+      @keyframes rotation {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      #error-log {
+        display: none;
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        right: 20px;
+        background: rgba(220, 38, 38, 0.9);
+        color: white;
+        padding: 16px;
+        border-radius: 12px;
+        font-family: monospace;
+        font-size: 12px;
+        z-index: 10000;
+        white-space: pre-wrap;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "uuid": "https://esm.sh/uuid@^13.0.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "d3": "https://esm.sh/d3@^7.9.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="loading">
+      <div class="loader"></div>
+      <div id="loading-text">Loading Task Bubbles...</div>
+    </div>
+    <div id="error-log"></div>
+    <div id="root"></div>
+
+    <script>
+      // --- APP LOADER CONFIGURATION ---
+      
+      // 1. External Dependencies (CDN)
+      const EXTERNAL_IMPORTS = {
+        "react": "https://esm.sh/react@18.3.1",
+        "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+        "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+        "d3": "https://esm.sh/d3@7.9.0",
+        "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react",
+        "uuid": "https://esm.sh/uuid@9.0.1"
+      };
+
+      // 2. Local Source Files
+      const LOCAL_FILES = [
+        './types.ts',
+        './constants.ts',
+        './services/audioService.ts',
+        './services/notificationService.ts',
+        './components/BubbleControls.tsx',
+        './components/BubbleCanvas.tsx',
+        './components/EditPanel.tsx',
+        './components/Sidebar.tsx',
+        './components/TaskListView.tsx',
+        './components/TutorialOverlay.tsx',
+        './App.tsx',
+        './index.tsx'
+      ];
+
+      // --- LOADER LOGIC ---
+
+      async function loadApp() {
+        const loadingText = document.getElementById('loading-text');
+        const errorLog = document.getElementById('error-log');
+        const fileContents = {};
+        
+        try {
+          // A. Fetch all files with cache busting
+          loadingText.innerText = 'Fetching resources...';
+          const cacheBuster = Date.now();
+          
+          await Promise.all(LOCAL_FILES.map(async (path) => {
+            try {
+                // Add query param to bypass cache
+                const res = await fetch(`${path}?v=${cacheBuster}`);
+                if (!res.ok) throw new Error(`Status ${res.status}`);
+                fileContents[path] = await res.text();
+            } catch (err) {
+                throw new Error(`Failed to load ${path}: ${err.message}`);
+            }
+          }));
+
+          // B. Prepare Module Map
+          const imports = { ...EXTERNAL_IMPORTS };
+          
+          // Helper to resolve paths
+          // Converts './components/Sidebar.tsx' -> 'root/components/Sidebar'
+          const getModuleId = (path) => {
+            return 'root/' + path.replace(/^\.\//, '').replace(/\.(tsx|ts)$/, '');
+          };
+          
+          // Helper to resolve relative imports inside files
+          // currentPath: './App.tsx', importPath: './components/Sidebar' -> 'root/components/Sidebar'
+          const resolveImport = (currentPath, importPath) => {
+             if (!importPath.startsWith('.')) return importPath; // External lib
+             
+             const currentDir = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+             // Simple path resolution
+             const stack = currentDir.split('/').filter(p => p && p !== '.');
+             const parts = importPath.split('/');
+             
+             for (let part of parts) {
+               if (part === '.') continue;
+               if (part === '..') {
+                 stack.pop();
+               } else {
+                 stack.push(part);
+               }
+             }
+             
+             return 'root/' + stack.join('/');
+          };
+
+          // C. Transform & Compile
+          loadingText.innerText = 'Compiling modules...';
+          
+          for (const path of LOCAL_FILES) {
+            let code = fileContents[path];
+            
+            // 1. Rewrite relative imports to absolute 'root/...' IDs
+            // Matches: import ... from "..." or export ... from "..."
+            code = code.replace(/from\s+['"]([^'"]+)['"]/g, (match, importPath) => {
+              if (importPath.startsWith('.')) {
+                return `from "${resolveImport(path, importPath)}"`;
+              }
+              return match;
+            });
+            
+            // Also handle dynamic imports or require if any (not present in this app, but good practice)
+            code = code.replace(/import\(['"]([^'"]+)['"]\)/g, (match, importPath) => {
+                 if (importPath.startsWith('.')) {
+                    return `import("${resolveImport(path, importPath)}")`;
+                 }
+                 return match;
+            });
+
+            // 2. Babel Compile
+            const transformed = Babel.transform(code, {
+              presets: ['react', 'typescript'],
+              filename: path,
+              sourceMaps: 'inline'
+            }).code;
+
+            // 3. Create Blob
+            const blob = new Blob([transformed], { type: 'application/javascript' });
+            const
