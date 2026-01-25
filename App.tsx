@@ -156,7 +156,7 @@ const App: React.FC = () => {
     const newTask: Task = {
       id: uuidv4(),
       boardId: targetBoardId,
-      title: 'New Task',
+      title: '', // Empty title to trigger placeholder state
       subtasks: [],
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
       size: 60,
@@ -186,6 +186,21 @@ const App: React.FC = () => {
     }
 
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+  };
+
+  // Used for reordering where we update multiple tasks at once
+  const handleBatchUpdateTasks = (updatedTasks: Task[]) => {
+      setTasks(prev => {
+          // Create a map for faster lookup
+          const updateMap = new Map(updatedTasks.map(t => [t.id, t]));
+          
+          return prev.map(t => {
+              if (updateMap.has(t.id)) {
+                  return updateMap.get(t.id)!;
+              }
+              return t;
+          });
+      });
   };
 
   const handleDeleteTask = (taskId: string) => {
@@ -264,35 +279,36 @@ const App: React.FC = () => {
         isOpen={isListViewOpen}
         onClose={() => setIsListViewOpen(false)}
         onUpdateTask={handleUpdateTask}
+        onBatchUpdateTasks={handleBatchUpdateTasks}
         onEditTask={(task) => {
             setEditingTaskId(task.id);
         }}
       />
 
-      {/* Bottom Center Board Indicator & List Toggle */}
-      <div className={`absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10 transition-opacity duration-300 flex items-center gap-3 ${editingTaskId ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-        <h1 className="pointer-events-none text-[10px] font-bold tracking-[0.25em] uppercase px-6 py-2.5 rounded-full backdrop-blur-md shadow-lg transition-colors duration-500
-          bg-white/20 dark:bg-slate-900/20 
-          text-slate-600 dark:text-white/60
-          border border-white/40 dark:border-white/10"
-        >
-            {getCurrentBoardName()}
-        </h1>
-        
-        <button
-          id="list-toggle"
-          onClick={() => setIsListViewOpen(true)}
-          className="p-2.5 rounded-full transition-all shadow-lg group 
-            bg-white/30 dark:bg-slate-900/20 
-            hover:bg-white/50 dark:hover:bg-slate-900/40 
-            text-slate-700 dark:text-white/80 
-            border border-white/60 dark:border-white/10 
-            backdrop-blur-xl
-            active:scale-95 pointer-events-auto"
-        >
-          <LayoutList size={18} className="group-active:scale-95 transition-transform" />
-        </button>
-      </div>
+      {/* Bottom Floating Interface */}
+      {!editingTaskId && (
+        <>
+            {/* List View Button - Bottom Left */}
+            <div className="absolute bottom-8 left-8 z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
+                <button 
+                    onClick={() => setIsListViewOpen(true)}
+                    className="p-3.5 rounded-2xl bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-white/10 text-slate-700 dark:text-white/90 shadow-xl hover:scale-105 active:scale-95 transition-all hover:bg-white/60 dark:hover:bg-slate-900/60 group"
+                    title="List View"
+                >
+                    <LayoutList size={24} className="opacity-80 group-hover:opacity-100" />
+                </button>
+            </div>
+
+            {/* Workspace Name - Center Bottom */}
+            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-10 fade-in duration-500 pointer-events-none">
+                 <div className="px-6 py-2.5 rounded-full bg-white/30 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-lg flex items-center justify-center min-w-[140px]">
+                    <span className="text-sm font-bold text-slate-800 dark:text-white leading-none whitespace-nowrap shadow-sm">
+                        {getCurrentBoardName()}
+                    </span>
+                 </div>
+            </div>
+        </>
+      )}
       
     </div>
   );

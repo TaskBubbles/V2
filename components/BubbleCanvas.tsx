@@ -993,36 +993,40 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       )}
 
       {!selectedTaskId && (
-          <div className="absolute bottom-8 right-8 flex flex-col gap-3 z-50 items-center">
+          <>
             {showEyeButton && (
-                <button 
-                onClick={onToggleShowCompleted} 
-                className={`p-3 rounded-2xl transition-all shadow-lg active:scale-95
-                    bg-white/80 dark:bg-slate-900/20 
-                    hover:bg-white dark:hover:bg-slate-900/40 
-                    text-slate-700 dark:text-white/80 
-                    border border-slate-200 dark:border-white/10 
-                    backdrop-blur-xl
-                    ${isShowingCompleted 
-                        ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') 
-                        : ''}
-                `}
-                >
-                {isShowingCompleted ? <Eye size={22} /> : <EyeOff size={22} />}
-                </button>
+                <div className="absolute top-6 right-6 z-50">
+                    <button 
+                    onClick={onToggleShowCompleted} 
+                    className={`p-3 rounded-2xl transition-all shadow-lg active:scale-95
+                        bg-white/80 dark:bg-slate-900/20 
+                        hover:bg-white dark:hover:bg-slate-900/40 
+                        text-slate-700 dark:text-white/80 
+                        border border-slate-200 dark:border-white/10 
+                        backdrop-blur-xl
+                        ${isShowingCompleted 
+                            ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') 
+                            : ''}
+                    `}
+                    >
+                    {isShowingCompleted ? <Eye size={22} /> : <EyeOff size={22} />}
+                    </button>
+                </div>
             )}
 
-            <button 
-            onClick={handleResetView} 
-            className={`p-3 rounded-2xl transition-all shadow-lg active:scale-95
-                ${isAutoScaling 
-                    ? 'bg-blue-500/10 border-blue-200 text-blue-600 shadow-[0_0_15px_rgba(59,130,246,0.1)] hover:bg-blue-500/20 dark:bg-blue-500/30 dark:border-blue-400/50 dark:text-blue-100' 
-                    : 'bg-white/80 dark:bg-slate-900/20 hover:bg-white dark:hover:bg-slate-900/40 text-slate-700 dark:text-white/80 border border-slate-200 dark:border-white/10 backdrop-blur-xl'}
-                `}
-            >
-            <Maximize size={22} className={!isAutoScaling ? 'animate-pulse-icon' : ''} />
-            </button>
-        </div>
+            <div className="absolute bottom-8 right-8 flex flex-col gap-3 z-50 items-center">
+                <button 
+                onClick={handleResetView} 
+                className={`p-3 rounded-2xl transition-all shadow-lg active:scale-95
+                    ${isAutoScaling 
+                        ? 'bg-blue-500/10 border-blue-200 text-blue-600 shadow-[0_0_15px_rgba(59,130,246,0.1)] hover:bg-blue-500/20 dark:bg-blue-500/30 dark:border-blue-400/50 dark:text-blue-100' 
+                        : 'bg-white/80 dark:bg-slate-900/20 hover:bg-white dark:hover:bg-slate-900/40 text-slate-700 dark:text-white/80 border border-slate-200 dark:border-white/10 backdrop-blur-xl'}
+                    `}
+                >
+                <Maximize size={22} className={!isAutoScaling ? 'animate-pulse-icon' : ''} />
+                </button>
+            </div>
+          </>
       )}
     </div>
   );

@@ -38,6 +38,8 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const [showDescription, setShowDescription] = useState(false);
   const [showSubtasks, setShowSubtasks] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+  const [hasText, setHasText] = useState(!!task.title);
   
   // Dimensions state to handle resize updates
   const [winDim, setWinDim] = useState({ w: window.innerWidth, h: window.innerHeight });
@@ -49,7 +51,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const colorSectionRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const subtaskInputRef = useRef<HTMLInputElement>(null);
-  const dateInputRef = useRef<HTMLInputElement>(null); // Added ref for date input
+  const dateInputRef = useRef<HTMLInputElement>(null);
   
   const currentSizeRef = useRef(task.size);
   const startDistRef = useRef(0);
@@ -64,6 +66,11 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   }, []);
 
   useEffect(() => { const t = setTimeout(() => setIsCentered(true), 20); return () => clearTimeout(t); }, []);
+
+  // Update hasText when task title changes prop-side (e.g. undo/redo or initial load)
+  useEffect(() => {
+      setHasText(!!task.title);
+  }, [task.title]);
 
   // Handle outside click for color grid
   useEffect(() => {
@@ -94,7 +101,6 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   // Focus subtask input when opened
   useEffect(() => {
     if (showSubtasks && subtaskInputRef.current) {
-        // Slight delay to ensure render is complete
         setTimeout(() => subtaskInputRef.current?.focus(), 100);
     }
   }, [showSubtasks]);
@@ -153,9 +159,17 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
             
             const textEl = bubble.querySelector('.bubble-text-inner') as HTMLElement;
             if (textEl) {
-                const currentText = textEl.innerText || task.title;
-                const fontSize = calculateFontSize(newSize, currentText);
+                // Use placeholder text for sizing if title is empty
+                const currentText = (textEl.innerText || "").trim();
+                const textToMeasure = currentText || "Task Name";
+                const fontSize = calculateFontSize(newSize, textToMeasure);
                 textEl.style.fontSize = `${fontSize}px`;
+                
+                // Update placeholder size too if it exists
+                const placeholderEl = bubble.querySelector('.placeholder-text') as HTMLElement;
+                if (placeholderEl) {
+                    placeholderEl.style.fontSize = `${fontSize}px`;
+                }
             }
         }
         if (ring) {
@@ -243,7 +257,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     </div>
   );
 
-  // Gradient Generation: Matches BubbleCanvas D3 gradient logic
+  // Gradient Generation
   const brightColor = d3.color(task.color)?.brighter(0.8)?.toString() || task.color;
   const bubbleGradient = `linear-gradient(135deg, ${task.color} 0%, ${brightColor} 100%)`;
 
@@ -251,14 +265,19 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const completedCount = subtasks.filter(s => s.completed).length;
   const progress = subtasks.length > 0 ? (completedCount / subtasks.length) * 100 : 0;
 
-  // --- COMPONENT RENDER FUNCTIONS ---
-  // Note: We use render functions instead of functional components to avoid re-mounting issues
-  // on resize (mobile keyboard), which causes focus loss in inputs.
+  // Placeholder Logic
+  // Show placeholder if title is empty. We ignore isFocused so the placeholder persists
+  // until the user actually types, which is better UX when auto-focus is off.
+  const isPlaceholderVisible = !hasText;
+  
+  // Calculate font size using task title OR placeholder text
+  const displayText = task.title || 'Task Name';
+  const currentFontSize = calculateFontSize(task.size, displayText);
 
-  // 1. Content Area (Description + Subtasks)
+  // --- COMPONENT RENDER FUNCTIONS ---
+
   const renderContentArea = () => (
      <div className="w-full flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200">
-        
         {/* Description Field */}
         {showDescription && (
             <div className="w-full relative group">
@@ -390,30 +409,20 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                 value={toDateTimeLocal(task.dueDate)}
                 onChange={(e) => onUpdate({ ...task, dueDate: e.target.value ? new Date(e.target.value).toISOString() : undefined })}
                 onClick={(e) => {
-                    // Force picker open on click for browsers where clicking the invisible text input focuses instead of opens
-                    // (Firefox, Desktop Safari, etc)
                     e.stopPropagation();
                     try {
                         if (e.currentTarget && 'showPicker' in e.currentTarget) {
                             e.currentTarget.showPicker();
                         }
-                    } catch (err) {
-                        // Ignore errors if picker is blocked or already open
-                    }
+                    } catch (err) {}
                 }}
             />
-            {/* CSS Hack to ensure WebKit browsers trigger picker on full area click */}
+            {/* CSS Hack for webkit calendar picker */}
             <style>{`
                 .date-trigger::-webkit-calendar-picker-indicator {
                     position: absolute;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    padding: 0;
-                    margin: 0;
-                    opacity: 0;
-                    cursor: pointer;
+                    top: 0; left: 0; width: 100%; height: 100%;
+                    padding: 0; margin: 0; opacity: 0; cursor: pointer;
                 }
             `}</style>
         </button>
@@ -552,7 +561,6 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     <div className="absolute inset-0 z-40 overflow-hidden" 
         onPointerUp={handleResizeEnd} 
         onPointerLeave={handleResizeEnd}
-        // Ensure that simply interacting with this overlay wakes the audio engine
         onPointerDown={() => audioService.resume()} 
     >
       
@@ -588,23 +596,53 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                    ...(isPopping ? { transform: 'translate(-50%, -50%) scale(1.2)', opacity: 0 } : {})
                 }}
             >
-              <div className="w-[65%] h-[65%] flex items-center justify-center pointer-events-none">
+              <div className="w-[65%] h-[65%] flex items-center justify-center relative">
+                  
+                  {/* VISUAL PLACEHOLDER - Overlay that disappears only when typing starts */}
+                  {isPlaceholderVisible && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                           <span 
+                                className="placeholder-text text-white font-bold italic opacity-50 text-center leading-[1.1]"
+                                style={{ fontSize: `${currentFontSize}px` }}
+                           >
+                               Task Name
+                           </span>
+                      </div>
+                  )}
+
+                  {/* EDITABLE CONTENT */}
                   <div ref={textRef} contentEditable suppressContentEditableWarning 
-                       onBlur={(e) => onUpdate({...task, title: e.currentTarget.innerText})}
+                       onBlur={(e) => {
+                          const text = e.currentTarget.innerText.trim();
+                          setIsFocused(false);
+                          // We do NOT reset to 'Task Name' string here to avoid selection issues.
+                          // We just save empty string if empty, and let the overlay handle the visual.
+                          onUpdate({...task, title: text});
+                       }}
+                       onFocus={(e) => {
+                          setIsFocused(true);
+                       }}
                        onInput={(e) => {
                           const text = e.currentTarget.innerText;
-                          const newSize = calculateFontSize(currentSizeRef.current, text);
+                          setHasText(!!text); // Update placeholder visibility based on real content
+                          
+                          const newSize = calculateFontSize(currentSizeRef.current, text || 'Task Name');
                           e.currentTarget.style.fontSize = `${newSize}px`;
+                          
+                          // Also update placeholder size in real-time just in case
+                          const placeholderEl = viewportRef.current?.querySelector('.placeholder-text') as HTMLElement;
+                          if (placeholderEl) placeholderEl.style.fontSize = `${newSize}px`;
                        }}
                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), e.currentTarget.blur())}
-                       className="bubble-text-inner w-full text-center text-white font-bold outline-none pointer-events-auto drop-shadow-lg"
+                       className={`bubble-text-inner w-full text-center text-white font-bold outline-none pointer-events-auto drop-shadow-lg transition-opacity duration-200 z-20`}
                        style={{ 
-                         fontSize: calculateFontSize(task.size, task.title), 
+                         fontSize: currentFontSize, 
                          overflowWrap: 'normal',
                          wordBreak: 'normal',
                          hyphens: 'none',
                          whiteSpace: 'pre-line',
-                         lineHeight: 1.1
+                         lineHeight: 1.1,
+                         minWidth: '20px' // Ensure caret is visible
                        }}>
                       {task.title}
                   </div>
