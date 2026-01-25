@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          # Cache line removed to support repos without package-lock.json committed
 
       - name: Install Dependencies 🔧
         run: npm install
