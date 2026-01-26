@@ -67,7 +67,45 @@
       }
       
       @keyframes spin { to { transform: rotate(360deg); } }
+      
+      /* ERROR BOX STYLES */
+      
+      #error-box {
+        display: none;
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        background: rgba(220, 38, 38, 0.95);
+        color: white;
+        padding: 20px;
+        font-family: monospace;
+        font-size: 12px;
+        z-index: 10000;
+        white-space: pre-wrap;
+        max-height: 50vh;
+        overflow-y: auto;
+      }
     </style>
+
+    <!-- ROBUST ERROR LOGGER -->
+    <script>
+      function showError(title, details) {
+        const box = document.getElementById('error-box');
+        if (box) {
+          box.style.display = 'block';
+          box.innerText += `[${title}]\n${details}\n\n`;
+          console.error(title, details);
+        }
+      }
+
+      window.onerror = function(msg, url, line, col, error) {
+        showError('JS Error', `${msg}\n${url}:${line}:${col}\n${error?.stack || ''}`);
+        return false;
+      };
+
+      window.addEventListener('unhandledrejection', function(event) {
+        showError('Promise Rejection', event.reason ? (event.reason.stack || event.reason) : 'Unknown reason');
+      });
+    </script>
 
 <script type="importmap">
 {
@@ -95,14 +133,32 @@
         </div>
     </div>
     
+    <div id="error-box" onclick="this.style.display='none'"></div>
+
+    
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          // Use a relative path that works for both root and /V2/
-          const swUrl = './sw.js';
-          navigator.serviceWorker.register(swUrl, { scope: './' })
-            .then(reg => console.log('SW Registered'))
-            .catch(err => console.error('SW Fail', err));
+          // Robust registration with console logging
+          navigator.serviceWorker.register('./sw.js', { scope: './' })
+            .then(reg => {
+              console.log('SW Registered:', reg.scope);
+              
+              // Check for updates
+              reg.onupdatefound = () => {
+                const installingWorker = reg.installing;
+                installingWorker.onstatechange = () => {
+                  if (installingWorker.state === 'installed') {
+                    if (navigator.serviceWorker.controller) {
+                      console.log('New content available; please refresh.');
+                    } else {
+                      console.log('Content is cached for offline use.');
+                    }
+                  }
+                };
+              };
+            })
+            .catch(err => showError('SW Registration Fail', err.message));
         });
       }
     </script>
