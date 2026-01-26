@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, Plus, LayoutGrid, List, Archive, LogOut, User as UserIcon, LogIn, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff } from 'lucide-react';
+import { Menu, Plus, LayoutGrid, List, Archive, LogOut, User as UserIcon, LogIn, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff, Download } from 'lucide-react';
 import { Board, User } from '../types';
 import { audioService } from '../services/audioService';
 import { notificationService } from '../services/notificationService';
@@ -62,6 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [newBoardName, setNewBoardName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   // Functional Settings State
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -75,6 +76,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
          return localStorage.getItem('notificationsEnabled') === 'true';
      } catch { return false; }
   });
+
+  // PWA Install Prompt Listener
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   // Effect: Persist Sound
   useEffect(() => {
@@ -269,6 +290,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
           
           {/* Footer Area with Settings */}
           <div className="pt-4 border-t border-slate-200 dark:border-white/10 mt-2 space-y-1.5">
+              
+              {/* Install PWA Button - Only visible when installable */}
+              {deferredPrompt && (
+                  <button
+                    onClick={handleInstallClick}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border border-transparent 
+                        text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300
+                        bg-blue-50/50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 hover:border-blue-200 dark:hover:border-blue-500/30"
+                  >
+                    <Download size={18} />
+                    <span className="font-medium text-sm">Install App</span>
+                  </button>
+              )}
+
               <button
                 onClick={() => {
                    setIsSettingsOpen(true);
