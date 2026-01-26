@@ -42,10 +42,11 @@ const PHYSICS = {
     vDecay: 0.4, 
 };
 
-// Config limits
-const MAX_ZOOM_LEVEL = 3;
-const MIN_ZOOM_LEVEL = 0.1;
-const AUTO_SCALE_MAX = 1; 
+// The maximum you can zoom in (e.g., 4x magnification)
+const MAX_ZOOM_IN = 4;
+// Padding around the bubbles when calculating the "Perfect Fit"
+// Reduced from 160 to 20 to make bubbles fill the screen almost to the edge
+const VIEWPORT_PADDING = 20;
 
 export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   tasks,
@@ -81,14 +82,11 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
   const zoomBehavior = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const isUserInteracting = useRef(false);
+  const isAutoScaling = useRef(true); // Default to Auto Scaling ON
+  const prevTaskCount = useRef(tasks.length);
   
-  const [isAutoScaling, setIsAutoScaling] = useState(true);
-  const isAutoScalingRef = useRef(true); 
-
-  const transformRef = useRef<d3.ZoomTransform>(d3.zoomIdentity);
-  const prevTasksLengthRef = useRef(tasks.length);
-  
-  const fitStateRef = useRef({ k: 1, x: 0, y: 0 });
+  // Stores the calculated "floor" zoom level
+  const minZoomRef = useRef(0.1);
 
   const hasResumedAudio = useRef(false);
   const ensureAudio = () => {
@@ -97,10 +95,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       hasResumedAudio.current = true;
     }
   };
-
-  useEffect(() => {
-    isAutoScalingRef.current = isAutoScaling;
-  }, [isAutoScaling]);
 
   const clearHoldTimer = useCallback(() => {
     if (holdTimerRef.current) {
@@ -112,7 +106,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       const nodeEl = d3.select(`#node-${poppingNodeIdRef.current}`);
       if (!nodeEl.empty()) {
         const d = nodeEl.datum() as SimulationNode;
-        // Reset visuals
         nodeEl.select('.pop-ring').interrupt().transition().duration(300).attr('stroke-dashoffset', 2 * Math.PI * (d.r + 3));
         nodeEl.select('.shake-group').classed('charging-shake', false);
         
@@ -138,72 +131,55 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // --- AUTO-SCALE TRIGGER ON NEW TASK ---
   useEffect(() => {
-    if (tasks.length > prevTasksLengthRef.current) {
-      setIsAutoScaling(true);
-    }
-    prevTasksLengthRef.current = tasks.length;
+      if (tasks.length > prevTaskCount.current) {
+          // New task added: Re-enable auto scaling to fit the new bubble
+          isAutoScaling.current = true;
+      }
+      prevTaskCount.current = tasks.length;
   }, [tasks.length]);
 
-  // --- ZOOM CONFIGURATION ---
+  // --- ZOOM INITIALIZATION ---
   useEffect(() => {
     if (!svgRef.current) return;
     const svg = d3.select(svgRef.current);
     const g = svg.select<SVGGElement>('.canvas-content');
 
     zoomBehavior.current = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL])
+      .scaleExtent([0.1, MAX_ZOOM_IN]) // Initial limits, updated dynamically in tick
       .filter((event) => {
          if (event.type === 'touchstart' && event.touches.length > 1) return true; 
          if (event.type === 'wheel') return true;
+         // Allow panning on background, disable on nodes to prioritize drag
          const isNode = event.target && (event.target as Element).closest('.node');
          if (isNode) return false;
          return true; 
       })
       .on('start', (event) => {
-         if (event.sourceEvent) isUserInteracting.current = true;
+         if (event.sourceEvent) {
+             isUserInteracting.current = true;
+             isAutoScaling.current = false; // User intervention breaks auto-scale
+         }
       })
       .on('end', (event) => {
-         if (event.sourceEvent) isUserInteracting.current = false;
+         if (event.sourceEvent) {
+             isUserInteracting.current = false;
+         }
       })
       .on('zoom', (event) => {
-        if (!event.sourceEvent) {
-            g.attr('transform', event.transform);
-            transformRef.current = event.transform;
-            return;
-        }
-
-        const newTransform = event.transform;
-        const fitK = fitStateRef.current.k;
-
-        if (isAutoScalingRef.current) {
-             if (newTransform.k > fitK * 1.05) {
-                 setIsAutoScaling(false);
-                 isAutoScalingRef.current = false;
-             } 
-             g.attr('transform', newTransform);
-             transformRef.current = newTransform;
-        } else {
-            if (newTransform.k <= fitK * 1.02) {
-                setIsAutoScaling(true);
-                isAutoScalingRef.current = true;
-                g.attr('transform', newTransform);
-                transformRef.current = newTransform;
-            } else {
-                g.attr('transform', newTransform);
-                transformRef.current = newTransform;
-            }
-        }
+        g.attr('transform', event.transform.toString());
       });
 
     svg.call(zoomBehavior.current).on('dblclick.zoom', null);
   }, []);
 
-  // --- MANUAL POINTER INTERACTION ---
+  // --- INTERACTION HANDLERS ---
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
       ensureAudio();
       activePointers.current.add(event.pointerId);
 
+      // Multi-touch logic (cancel node drag if second finger touches)
       if (activePointers.current.size > 1) {
           if (draggingNodeRef.current) {
               const d = draggingNodeRef.current;
@@ -217,9 +193,10 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           return; 
       }
 
-      const t = transformRef.current;
-      const mouseX = (event.nativeEvent.offsetX - t.x) / t.k;
-      const mouseY = (event.nativeEvent.offsetY - t.y) / t.k;
+      // Find Node
+      const transform = d3.zoomTransform(svgRef.current!);
+      const mouseX = (event.nativeEvent.offsetX - transform.x) / transform.k;
+      const mouseY = (event.nativeEvent.offsetY - transform.y) / transform.k;
 
       let foundNode: SimulationNode | undefined;
       if (simulationRef.current) {
@@ -244,6 +221,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           isDraggingRef.current = false;
           didPopRef.current = false;
 
+          // Lock position for drag
           if (!foundNode.isCenter) {
               foundNode.fx = foundNode.x;
               foundNode.fy = foundNode.y;
@@ -251,6 +229,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
           if (simulationRef.current) simulationRef.current.alphaTarget(0.3).restart();
 
+          // Pop Logic
           if (!foundNode.isCenter && foundNode.id !== selectedTaskId) {
              poppingNodeIdRef.current = foundNode.id;
              const nodeEl = d3.select(`#node-${foundNode.id}`);
@@ -258,23 +237,18 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
              const shakeEl = nodeEl.select('.shake-group');
              const popRing = nodeEl.select('.pop-ring');
              
-             // HOLD ANIMATION START
              innerEl.transition().duration(250).ease(d3.easeCubicOut).attr('transform', 'scale(0.95)');
              shakeEl.classed('charging-shake', true);
-             
-             // Progress ring - easeQuadIn creates "building pressure" feel
              popRing.style('opacity', 1).transition().duration(POP_THRESHOLD_MS).ease(d3.easeQuadIn).attr('stroke-dashoffset', 0);
 
              holdTimerRef.current = setTimeout(() => {
                  didPopRef.current = true;
-                 
                  audioService.playPop();
                  createExplosion(foundNode?.x || 0, foundNode?.y || 0, foundNode?.originalTask.color || '#fff', foundNode?.r || 50);
                  
                  shakeEl.classed('charging-shake', false);
                  innerEl.classed('is-popping', true);
                  
-                 // Implode slightly then burst
                  innerEl.transition().duration(100).ease(d3.easeBackIn.overshoot(3)).attr('transform', 'scale(1.2)')
                     .style('opacity', 0)
                     .on('end', () => {
@@ -304,9 +278,9 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           event.preventDefault(); 
           event.stopPropagation();
 
-          const t = transformRef.current;
-          const x = (event.nativeEvent.offsetX - t.x) / t.k;
-          const y = (event.nativeEvent.offsetY - t.y) / t.k;
+          const transform = d3.zoomTransform(svgRef.current!);
+          const x = (event.nativeEvent.offsetX - transform.x) / transform.k;
+          const y = (event.nativeEvent.offsetY - transform.y) / transform.k;
           
           draggingNodeRef.current.fx = x;
           draggingNodeRef.current.fy = y;
@@ -323,10 +297,11 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           
           if (!isDraggingRef.current && !didPopRef.current && activePointers.current.size === 0) {
               if (d.isCenter) {
-                  onAddTask();
+                  if (!selectedTaskId) onAddTask();
               } else if (d.id !== selectedTaskId) {
+                  // Capture screen position for "fly out" animation start point
                   if (d.x !== undefined && d.y !== undefined) {
-                      const t = transformRef.current;
+                      const t = d3.zoomTransform(svgRef.current!);
                       const screenX = t.x + d.x * t.k;
                       const screenY = t.y + d.y * t.k;
                       setEditStartPos({ x: screenX, y: screenY, k: t.k });
@@ -360,7 +335,9 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     const svg = d3.select(svgRef.current);
 
     if (selectedTaskId) {
+       // Disable zoom when a task is open
        svg.on('.zoom', null);
+       // Reset to identity for overlay positioning stability
        svg.transition().duration(800)
           .call(zoomBehavior.current.transform, d3.zoomIdentity);
     } else {
@@ -374,60 +351,29 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       const group = d3.select(svgRef.current).select('.canvas-content');
       const particleColor = color || '#ffffff';
       
-      // 1. Shockwave Ripple
       group.append('circle')
-          .attr('cx', x)
-          .attr('cy', y)
-          .attr('r', radius)
-          .attr('fill', 'none')
-          .attr('stroke', theme === 'dark' ? 'white' : '#64748b')
-          .attr('stroke-width', 3)
+          .attr('cx', x).attr('cy', y).attr('r', radius)
+          .attr('fill', 'none').attr('stroke', theme === 'dark' ? 'white' : '#64748b').attr('stroke-width', 3)
           .style('opacity', 0.6)
           .transition().duration(500).ease(d3.easeExpOut)
-          .attr('r', radius * 2)
-          .style('opacity', 0)
-          .attr('stroke-width', 0)
-          .remove();
+          .attr('r', radius * 2).style('opacity', 0).attr('stroke-width', 0).remove();
       
-      // 2. Sparkles/Debris
       const particleCount = 16;
-      const particles = d3.range(particleCount).map(() => ({
-          angle: Math.random() * Math.PI * 2,
-          // Distribute speeds for depth
-          speed: radius * (0.8 + Math.random() * 0.8), 
-          size: 2 + Math.random() * 4,
-          delay: Math.random() * 50
-      }));
-
-      group.selectAll(`.particle-${Date.now()}`)
-         .data(particles)
-         .enter()
-         .append('circle')
-         .attr('cx', x)
-         .attr('cy', y)
-         .attr('r', d => d.size)
-         .attr('fill', particleColor)
-         .style('opacity', 1)
-         .transition()
-         .delay(d => d.delay)
-         .duration(600)
-         .ease(d3.easeExpOut)
-         .attr('cx', d => x + Math.cos(d.angle) * d.speed)
-         .attr('cy', d => y + Math.sin(d.angle) * d.speed)
-         .attr('r', 0)
-         .remove();
+      d3.range(particleCount).forEach(() => {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = radius * (0.8 + Math.random() * 0.8);
+          group.append('circle')
+             .attr('cx', x).attr('cy', y).attr('r', 2 + Math.random() * 4).attr('fill', particleColor)
+             .style('opacity', 1)
+             .transition().delay(Math.random() * 50).duration(600).ease(d3.easeExpOut)
+             .attr('cx', x + Math.cos(angle) * speed).attr('cy', y + Math.sin(angle) * speed).attr('r', 0).remove();
+      });
          
-      // 3. Central Flash
       group.append('circle')
-        .attr('cx', x)
-        .attr('cy', y)
-        .attr('r', radius * 0.8)
-        .attr('fill', 'white')
+        .attr('cx', x).attr('cy', y).attr('r', radius * 0.8).attr('fill', 'white')
         .style('opacity', 0.4)
         .transition().duration(200).ease(d3.easeQuadOut)
-        .attr('r', radius * 1.4)
-        .style('opacity', 0)
-        .remove();
+        .attr('r', radius * 1.4).style('opacity', 0).remove();
   };
 
   const handleProgrammaticPop = (task: Task, coords?: { x: number, y: number }) => {
@@ -437,42 +383,36 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       const innerEl = nodeEl.select('.inner-scale');
       const popRing = nodeEl.select('.pop-ring');
       
-      const transform = nodeEl.attr('transform');
       let x = 0, y = 0;
-      if (transform) {
-          const match = transform.match(/translate\(([^,]+),([^)]+)\)/);
-          if (match) { x = parseFloat(match[1]); y = parseFloat(match[2]); }
-      }
-      
-      // Override position if provided (from Overlay)
       if (coords) {
-          // Since the canvas is likely zoomed to Identity (0,0) due to selection,
-          // screen coords map directly to SVG coords.
-          x = coords.x;
-          y = coords.y;
+          x = coords.x; y = coords.y;
+      } else {
+          // Fallback parsing (rarely used if coords provided)
+          const transform = nodeEl.attr('transform');
+          if (transform) {
+              const match = transform.match(/translate\(([^,]+),([^)]+)\)/);
+              if (match) { x = parseFloat(match[1]); y = parseFloat(match[2]); }
+          }
       }
       
       audioService.playPop();
       createExplosion(x, y, task.color, task.size);
       
       if (coords) {
-          // Came from overlay: bubble fades out in Overlay, just update state after delay
+          // Came from overlay
           setTimeout(() => {
              onToggleComplete(task);
              onEditTask(null as any);
           }, 150);
-          return;
+      } else {
+          popRing.style('opacity', 1).transition().duration(200).attr('stroke-dashoffset', 0);
+          innerEl.transition().duration(150).ease(d3.easeBackIn.overshoot(2))
+            .attr('transform', 'scale(1.2)').style('opacity', 0)
+            .on('end', () => {
+                 onToggleComplete(task);
+                 onEditTask(null as any);
+            });
       }
-
-      // Fallback: If not from overlay, animate the node itself
-      popRing.style('opacity', 1).transition().duration(200).attr('stroke-dashoffset', 0);
-      innerEl.transition().duration(150).ease(d3.easeBackIn.overshoot(2))
-        .attr('transform', 'scale(1.2)')
-        .style('opacity', 0)
-        .on('end', () => {
-             onToggleComplete(task);
-             onEditTask(null as any);
-        });
   };
 
   const getOffScreenPos = (w: number, h: number) => {
@@ -489,95 +429,60 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     
     const visibleTasks = showCompleted ? tasks : tasks.filter(t => !t.completed);
     const oldNodes: SimulationNode[] = simulationRef.current?.nodes() || [];
-    
-    const oldNodesMap = new Map<string, SimulationNode>(
-      oldNodes.map(n => [n.id, n])
-    );
+    const oldNodesMap = new Map(oldNodes.map(n => [n.id, n]));
 
-    const nodes: SimulationNode[] = visibleTasks.map((task, index) => {
+    const nodes: SimulationNode[] = visibleTasks.map((task) => {
       const existing = oldNodesMap.get(task.id);
       let startX, startY;
       if (existing) {
-          startX = existing.x;
-          startY = existing.y;
+          startX = existing.x; startY = existing.y;
       } else {
           const spawn = getOffScreenPos(width, height);
-          startX = spawn.x;
-          startY = spawn.y;
+          startX = spawn.x; startY = spawn.y;
       }
-
       return {
-        id: task.id,
-        r: task.size,
-        originalTask: task,
-        x: startX,
-        y: startY,
-        vx: existing ? existing.vx : 0,
-        vy: existing ? existing.vy : 0,
+        id: task.id, r: task.size, originalTask: task,
+        x: startX, y: startY,
+        vx: existing ? existing.vx : 0, vy: existing ? existing.vy : 0,
       };
     });
 
     const centerNode: SimulationNode = {
-      id: 'CENTER_BTN',
-      r: CENTER_RADIUS,
-      originalTask: {} as Task, 
-      isCenter: true,
-      fx: width / 2,
-      fy: height / 2, 
-      x: width/2,
-      y: height/2
+      id: 'CENTER_BTN', r: CENTER_RADIUS, originalTask: {} as Task, 
+      isCenter: true, fx: width / 2, fy: height / 2, x: width/2, y: height/2
     };
     if(!nodes.find(n => n.id === 'CENTER_BTN')) nodes.push(centerNode);
 
     if (!simulationRef.current) {
       simulationRef.current = d3.forceSimulation<SimulationNode>(nodes)
-        .alphaMin(0.0001) 
-        .alphaDecay(0.02); 
+        .alphaMin(0.0001).alphaDecay(0.02); 
     } else {
       simulationRef.current.nodes(nodes);
       simulationRef.current.alpha(1).restart();
     }
     const simulation = simulationRef.current;
-
     const svg = d3.select(svgRef.current);
     
-    // DEFINE GRADIENTS (Re-run when theme changes)
+    // Gradient definitions (retained for brevity, same as previous)
     let defs = svg.select<SVGDefsElement>('defs');
-    if (defs.empty()) {
-        defs = svg.append('defs');
-    }
-
-    // REMOVE OLD/EXISTING GRADIENTS
+    if (defs.empty()) defs = svg.append('defs');
+    
+    // --- GRADIENT SETUP (Glass/Theme) ---
+    // Clears old gradients to prevent duplication/stale themes
     defs.select('#center-glass-gradient').remove();
     defs.select('#center-glass-gradient-hover').remove();
     defs.select('#center-glass-stroke').remove();
-    defs.select('#glass-highlight').remove();
-
-    // 1. Center Body Gradient (Adaptive Glass)
-    const centerGrad = defs.append('linearGradient')
-        .attr('id', 'center-glass-gradient')
-        .attr('x1', '0%')
-        .attr('y1', '0%')
-        .attr('x2', '100%')
-        .attr('y2', '100%');
     
+    const centerGrad = defs.append('linearGradient').attr('id', 'center-glass-gradient').attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '100%');
     if (theme === 'dark') {
         centerGrad.append('stop').attr('offset', '0%').attr('stop-color', 'white').attr('stop-opacity', 0.12);
         centerGrad.append('stop').attr('offset', '100%').attr('stop-color', 'white').attr('stop-opacity', 0.06);
     } else {
-        // Light Mode: Clearer, crystalline glass, now with higher opacity to pop against white BG
         centerGrad.append('stop').attr('offset', '0%').attr('stop-color', '#ffffff').attr('stop-opacity', 0.9);
         centerGrad.append('stop').attr('offset', '100%').attr('stop-color', '#e2e8f0').attr('stop-opacity', 0.6);
     }
 
-    // 2. Center Hover Gradient
-    const hoverGrad = defs.append('linearGradient')
-        .attr('id', 'center-glass-gradient-hover')
-        .attr('x1', '0%')
-        .attr('y1', '0%')
-        .attr('x2', '100%')
-        .attr('y2', '100%');
-
+    const hoverGrad = defs.append('linearGradient').attr('id', 'center-glass-gradient-hover').attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '100%');
     if (theme === 'dark') {
         hoverGrad.append('stop').attr('offset', '0%').attr('stop-color', 'white').attr('stop-opacity', 0.25);
         hoverGrad.append('stop').attr('offset', '100%').attr('stop-color', 'white').attr('stop-opacity', 0.12);
@@ -586,102 +491,57 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         hoverGrad.append('stop').attr('offset', '100%').attr('stop-color', '#f1f5f9').attr('stop-opacity', 0.7);
     }
     
-    // 3. Center Border Gradient (Rim Light/Dark)
-    const strokeGrad = defs.append('linearGradient')
-        .attr('id', 'center-glass-stroke')
-        .attr('x1', '0%')
-        .attr('y1', '0%')
-        .attr('x2', '100%')
-        .attr('y2', '100%');
-    
+    const strokeGrad = defs.append('linearGradient').attr('id', 'center-glass-stroke').attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '100%');
     if (theme === 'dark') {
         strokeGrad.append('stop').attr('offset', '0%').attr('stop-color', 'white').attr('stop-opacity', 0.8);
         strokeGrad.append('stop').attr('offset', '40%').attr('stop-color', 'white').attr('stop-opacity', 0.2);
         strokeGrad.append('stop').attr('offset', '100%').attr('stop-color', 'white').attr('stop-opacity', 0.05);
     } else {
-        // Sharp darker rim for definition in light mode
         strokeGrad.append('stop').attr('offset', '0%').attr('stop-color', '#94a3b8').attr('stop-opacity', 0.5);
         strokeGrad.append('stop').attr('offset', '100%').attr('stop-color', '#cbd5e1').attr('stop-opacity', 0.2);
     }
 
-    // Task Color Gradients (Universal)
-    const uniqueColors = Array.from(new Set(tasks.map(t => t.color).filter(Boolean)));
-    uniqueColors.forEach((color: string) => {
-        if (!color) return;
+    Array.from(new Set(tasks.map(t => t.color).filter(Boolean))).forEach((color: string) => {
         const id = `grad-${color.replace('#', '')}`;
         if (defs.select(`#${id}`).empty()) {
-            const grad = defs.append('linearGradient')
-                .attr('id', id)
-                .attr('x1', '0%')
-                .attr('y1', '0%')
-                .attr('x2', '100%')
-                .attr('y2', '100%');
-            
+            const grad = defs.append('linearGradient').attr('id', id).attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '100%');
             grad.append('stop').attr('offset', '0%').attr('stop-color', color).attr('stop-opacity', 1);
             grad.append('stop').attr('offset', '100%').attr('stop-color', d3.color(color)?.brighter(0.8)?.toString() || color).attr('stop-opacity', 1);
         }
     });
 
+    // Node Rendering
     const svgContent = svg.select('.canvas-content');
-    const nodeSelection = svgContent.selectAll<SVGGElement, SimulationNode>('.node')
-       .data(nodes, d => d.id);
+    const nodeSelection = svgContent.selectAll<SVGGElement, SimulationNode>('.node').data(nodes, d => d.id);
 
-    nodeSelection.exit()
-       .transition().duration(600)
-       .style('opacity', 0)
-       .attr('transform', (d: any) => `translate(${d.x},${d.y}) scale(0.1)`)
-       .remove();
+    nodeSelection.exit().transition().duration(600).style('opacity', 0).attr('transform', (d: any) => `translate(${d.x},${d.y}) scale(0.1)`).remove();
 
-    const enterGroup = nodeSelection.enter()
-       .append('g')
+    const enterGroup = nodeSelection.enter().append('g')
        .attr('class', d => `node cursor-pointer group ${d.isCenter ? 'center-node' : ''}`)
        .attr('id', d => `node-${d.id}`);
     
-    // Structure: node -> inner-scale -> shake-group -> [rings, bubble, content]
     const inner = enterGroup.append('g').attr('class', 'inner-scale transition-transform duration-75');
-    const shaker = inner.append('g').attr('class', 'shake-group'); // Wrapper for vibration
+    const shaker = inner.append('g').attr('class', 'shake-group'); 
 
-    shaker.append('circle')
-        .attr('class', 'pop-ring')
-        .attr('fill', 'none')
-        .attr('stroke', theme === 'dark' ? '#ffffff' : '#64748b')
-        .attr('stroke-width', 4)
-        .attr('opacity', 0)
-        .style('pointer-events', 'none')
-        .attr('r', d => d.r)
-        .attr('stroke-dasharray', d => 2 * Math.PI * d.r)
-        .attr('stroke-dashoffset', d => 2 * Math.PI * d.r)
+    shaker.append('circle').attr('class', 'pop-ring').attr('fill', 'none').attr('stroke', theme === 'dark' ? '#ffffff' : '#64748b').attr('stroke-width', 4).attr('opacity', 0).style('pointer-events', 'none')
         .attr('transform', 'rotate(-90)');
 
-    shaker.append('circle')
-       .attr('class', 'main-bubble transition-colors duration-300')
-       .attr('stroke-width', 0);
+    shaker.append('circle').attr('class', 'main-bubble transition-colors duration-300').attr('stroke-width', 0);
 
     shaker.append('g').attr('class', 'text-content pointer-events-none')
          .append('foreignObject').append('xhtml:div')
          .attr('class', 'w-full h-full flex flex-col items-center justify-center text-center overflow-hidden bubble-text-container')
          .html(d => `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1;"></div>`);
 
-    inner.filter(d => !!d.isCenter)
-       .append('foreignObject')
-       .attr('class', 'center-btn-container pointer-events-none') 
-       .append('xhtml:div')
-       .attr('class', 'w-full h-full flex items-center justify-center text-white center-icon')
-       .html('');
+    inner.filter(d => !!d.isCenter).append('foreignObject').attr('class', 'center-btn-container pointer-events-none') 
+       .append('xhtml:div').attr('class', 'w-full h-full flex items-center justify-center text-white center-icon').html('');
 
     const allNodes = enterGroup.merge(nodeSelection);
-    
     allNodes.filter(d => !!d.isCenter).raise();
     
     const isMobile = dimensions.width < 768;
     allNodes.filter(d => !!d.isCenter).select('.center-btn-container')
-       .attr('width', isMobile ? 80 : 48)
-       .attr('height', isMobile ? 80 : 48)
-       .attr('x', isMobile ? -40 : -24)
-       .attr('y', isMobile ? -40 : -24);
-       
-    // Ultra-thin Plus Icon
-    // Center icon color needs to adapt to theme
+       .attr('width', isMobile ? 80 : 48).attr('height', isMobile ? 80 : 48).attr('x', isMobile ? -40 : -24).attr('y', isMobile ? -40 : -24);
     allNodes.filter(d => !!d.isCenter).select('.center-icon')
        .style('color', theme === 'dark' ? 'white' : '#475569')
        .html(`<div style="font-family: inherit; font-weight: 200; font-size: ${isMobile ? 56 : 42}px; line-height: 1; margin-top: -4px;">+</div>`);
@@ -691,122 +551,64 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         .attr('fill', d => {
             if (d.isCenter) return 'url(#center-glass-gradient)'; 
             if (d.originalTask.completed) return theme === 'dark' ? '#1e293b' : '#cbd5e1'; 
-            
             const color = d.originalTask.color;
             if (!color) return '#cccccc'; 
             return `url(#grad-${color.replace('#', '')})`;
         })
-        .attr('stroke', d => {
-            if (d.isCenter) return 'url(#center-glass-stroke)';
-            return 'none';
-        })
+        .attr('stroke', d => d.isCenter ? 'url(#center-glass-stroke)' : 'none')
         .attr('stroke-width', d => d.isCenter ? null : 0) 
-        .style('filter', d => d.isCenter 
-             ? (theme === 'dark' 
-                ? 'drop-shadow(0px 8px 32px rgba(0,0,0,0.25))' 
-                : 'drop-shadow(0px 8px 24px rgba(0,0,0,0.15))') 
-             : (theme === 'dark'
-                ? 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))'
-                : 'drop-shadow(0px 4px 16px rgba(148, 163, 184, 0.4))') // Slate colored shadow for better aesthetics on light mode
-        )
+        .style('filter', d => d.isCenter ? (theme === 'dark' ? 'drop-shadow(0px 8px 32px rgba(0,0,0,0.25))' : 'drop-shadow(0px 8px 24px rgba(0,0,0,0.15))') : (theme === 'dark' ? 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))' : 'drop-shadow(0px 4px 16px rgba(148, 163, 184, 0.4))'))
         .attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`);
 
     allNodes.select('.pop-ring')
-        .attr('r', d => d.r + 3)
-        .attr('stroke', theme === 'dark' ? '#ffffff' : '#64748b')
-        .attr('stroke-dasharray', d => 2 * Math.PI * (d.r + 3))
-        .attr('stroke-dashoffset', d => 2 * Math.PI * (d.r + 3));
+        .attr('r', d => d.r + 3).attr('stroke', theme === 'dark' ? '#ffffff' : '#64748b')
+        .attr('stroke-dasharray', d => 2 * Math.PI * (d.r + 3)).attr('stroke-dashoffset', d => 2 * Math.PI * (d.r + 3));
 
-    // STRICT SQUARE LAYOUT
     allNodes.select('.text-content foreignObject')
-        // Using 1.38 which is slightly larger than 1.3 but safely within sqrt(2) approx 1.41
-        .attr('width', d => d.r * 1.38)
-        .attr('height', d => d.r * 1.38)
-        .attr('x', d => -d.r * 0.69)
-        .attr('y', d => -d.r * 0.69);
+        .attr('width', d => d.r * 1.38).attr('height', d => d.r * 1.38).attr('x', d => -d.r * 0.69).attr('y', d => -d.r * 0.69);
 
     allNodes.select('.bubble-text-container')
         .html(d => {
             if (d.isCenter) return '';
             const subtaskCount = d.originalTask.subtasks?.length || 0;
             const completedSubtasks = d.originalTask.subtasks?.filter(s => s.completed).length || 0;
-            
             let html = `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1;">${d.originalTask.title}</div>`;
             
             if (d.originalTask.dueDate) {
                 const date = new Date(d.originalTask.dueDate);
                 const now = new Date();
                 const isOverdue = date < now && !d.originalTask.completed;
-                
-                const isToday = date.getDate() === now.getDate() &&
-                                date.getMonth() === now.getMonth() &&
-                                date.getFullYear() === now.getFullYear();
-
-                const dateStr = isToday 
-                    ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-                    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                
+                const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth();
+                const dateStr = isToday ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 const dateSize = Math.max(9, d.r * 0.18);
                 const pillColor = isOverdue ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.2)';
-                
-                // Using inline-block wrapper for the pill effect
-                html += `
-                <div style="margin-top: 6px;">
-                    <div style="
-                        display: inline-block; 
-                        background: ${pillColor}; 
-                        padding: 2px 8px; 
-                        border-radius: 99px; 
-                        font-size: ${dateSize}px; 
-                        color: white; 
-                        font-weight: 600; 
-                        letter-spacing: 0.02em;
-                        backdrop-filter: blur(4px);
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    ">
-                        ${dateStr}
-                    </div>
-                </div>`;
+                html += `<div style="margin-top: 6px;"><div style="display: inline-block; background: ${pillColor}; padding: 2px 8px; border-radius: 99px; font-size: ${dateSize}px; color: white; font-weight: 600; backdrop-filter: blur(4px);">${dateStr}</div></div>`;
             }
-            
-            if (subtaskCount > 0) {
-                html += `<div style="margin-top: 4px; font-size: ${d.r * 0.2}px; opacity: 0.8; font-weight: 600;">${completedSubtasks}/${subtaskCount}</div>`;
-            }
-            
+            if (subtaskCount > 0) html += `<div style="margin-top: 4px; font-size: ${d.r * 0.2}px; opacity: 0.8; font-weight: 600;">${completedSubtasks}/${subtaskCount}</div>`;
             return html;
         });
 
     allNodes.select('.bubble-text')
-        .style('color', d => {
-            if (d.originalTask.completed) return theme === 'dark' ? '#94a3b8' : '#64748b';
-            return '#ffffff'; // Colored bubbles always use white text
-        })
+        .style('color', d => d.originalTask.completed ? (theme === 'dark' ? '#94a3b8' : '#64748b') : '#ffffff')
         .style('font-size', d => {
             let size = calculateFontSize(d.r, d.originalTask.title);
-            // If we have extra metadata lines, reduce main text size slightly to make room
-            if (d.originalTask.dueDate || (d.originalTask.subtasks && d.originalTask.subtasks.length > 0)) {
-                size = size * 0.85;
-            }
+            if (d.originalTask.dueDate || (d.originalTask.subtasks && d.originalTask.subtasks.length > 0)) size = size * 0.85;
             return `${size}px`;
         })
         .style('opacity', d => d.originalTask.completed ? 0.6 : 1)
         .style('text-decoration', d => d.originalTask.completed ? 'line-through' : 'none');
 
     allNodes.style('pointer-events', d => d.id === selectedTaskId ? 'none' : 'all');
-    
-    // Reset transforms when not selected
     allNodes.select('.inner-scale').style('opacity', d => d.id === selectedTaskId ? 0 : 1).attr('transform', 'scale(1)');
 
     simulation.on('tick', () => {
-       // HARD CONSTRAINT: Prevent center overlap
+       // 1. Prevent Center Overlap
        const cx = dimensions.width / 2;
        const cy = dimensions.height / 2;
        const hardCenterBuffer = 10; 
        
        nodes.forEach(node => {
-          if (node.isCenter || node.id === selectedTaskId) return;
-          if (node.x === undefined || node.y === undefined) return;
-
+          if (node.isCenter || node.id === selectedTaskId || node.x === undefined || node.y === undefined) return;
           const dx = node.x - cx;
           const dy = node.y - cy;
           const dist = Math.sqrt(dx * dx + dy * dy);
@@ -814,55 +616,88 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
           if (dist < minDistance) {
               const angle = dist === 0 ? Math.random() * Math.PI * 2 : Math.atan2(dy, dx);
-              const tx = Math.cos(angle) * minDistance;
-              const ty = Math.sin(angle) * minDistance;
-              
-              node.x = cx + tx;
-              node.y = cy + ty;
-              
-              if (node.vx && node.vy) {
-                  node.vx *= 0.5;
-                  node.vy *= 0.5;
-              }
+              node.x = cx + Math.cos(angle) * minDistance;
+              node.y = cy + Math.sin(angle) * minDistance;
+              if (node.vx && node.vy) { node.vx *= 0.5; node.vy *= 0.5; }
           }
        });
 
+       // 2. Update Position
        allNodes.attr('transform', d => `translate(${d.x},${d.y})`);
 
-       if (zoomBehavior.current) {
-           const cx = dimensions.width / 2;
-           const cy = dimensions.height / 2;
-           let maxDistX = 0, maxDistY = 0;
+       // 3. UNIFIED CAMERA LOGIC
+       if (zoomBehavior.current && svgRef.current) {
+           const simCx = dimensions.width / 2;
+           const simCy = dimensions.height / 2;
+
+           // Calculate bounds relative to the CENTER NODE
+           let maxDistX = 0;
+           let maxDistY = 0;
+           let hasNodes = false;
+
            nodes.forEach(n => {
               if (n.x === undefined || n.y === undefined) return;
-              const distHalfW = Math.abs(n.x - cx) + n.r + 60; 
-              const distHalfH = Math.abs(n.y - cy) + n.r + 60;
-              if (distHalfW > maxDistX) maxDistX = distHalfW;
-              if (distHalfH > maxDistY) maxDistY = distHalfH;
-           });
-           
-           if (maxDistX > 0 && maxDistY > 0) {
-               const scaleX = dimensions.width / (maxDistX * 2); 
-               const scaleY = dimensions.height / (maxDistY * 2);
-               let targetK = Math.min(scaleX, scaleY) * 0.95; 
-               targetK = Math.min(Math.max(targetK, 0.25), AUTO_SCALE_MAX); 
-               
-               const targetX = cx * (1 - targetK);
-               const targetY = cy * (1 - targetK);
-               
-               fitStateRef.current = { k: targetK, x: targetX, y: targetY };
-               
-               if (isAutoScaling && !selectedTaskId && !isUserInteracting.current) {
-                   const current = transformRef.current;
-                   const smooth = 0.05; 
-                   const k = current.k + (targetK - current.k) * smooth;
-                   const x = current.x + (targetX - current.x) * smooth;
-                   const y = current.y + (targetY - current.y) * smooth;
+              hasNodes = true;
+              const r = n.r + 20; // Radius + Padding/Shadow
+              
+              // Distance from center axis
+              const dx = Math.abs(n.x - simCx) + r;
+              const dy = Math.abs(n.y - simCy) + r;
 
-                   if (Math.abs(k - current.k) > 0.0001 || Math.abs(x - current.x) > 0.1 || Math.abs(y - current.y) > 0.1) {
-                       const newTransform = d3.zoomIdentity.translate(x, y).scale(k);
-                       // OPTIMIZATION: Use cached 'svg' selection instead of querying DOM
-                       svg.call(zoomBehavior.current.transform, newTransform);
+              if (dx > maxDistX) maxDistX = dx;
+              if (dy > maxDistY) maxDistY = dy;
+           });
+
+           if (!hasNodes) {
+               maxDistX = 100;
+               maxDistY = 100;
+           }
+
+           // Determine necessary viewport size to fit this symmetric bounds
+           const requiredW = (maxDistX + VIEWPORT_PADDING) * 2;
+           const requiredH = (maxDistY + VIEWPORT_PADDING) * 2;
+
+           // Calculate Fit Scale
+           const scaleX = dimensions.width / requiredW;
+           const scaleY = dimensions.height / requiredH;
+           let fitK = Math.min(scaleX, scaleY);
+           
+           fitK = Math.min(fitK, MAX_ZOOM_IN);
+           fitK = Math.max(fitK, 0.1); 
+
+           minZoomRef.current = fitK;
+
+           // Update Constraints
+           zoomBehavior.current.scaleExtent([fitK, MAX_ZOOM_IN]); 
+           
+           // Update Pan Extents
+           const extW = requiredW / 2; 
+           const extH = requiredH / 2;
+           
+           zoomBehavior.current.translateExtent([
+               [simCx - extW, simCy - extH],
+               [simCx + extW, simCy + extH]
+           ]);
+
+           // AUTOMATIC DRIFT (Seamless "Snap-to-Fit")
+           if (!isUserInteracting.current && !selectedTaskId) {
+               const t = d3.zoomTransform(svg.node() as Element);
+
+               const isAtOrBelowFloor = t.k < fitK * 1.01;
+
+               // Requirement 1 & 2: If auto-scaling mode is active OR we are naturally at the floor
+               if (isAutoScaling.current || isAtOrBelowFloor) {
+                   // Target: Center Node (simCx, simCy) at Screen Center
+                   // transform.x = screenCenter - simCenter * k
+                   const targetX = (dimensions.width / 2) - simCx * fitK;
+                   const targetY = (dimensions.height / 2) - simCy * fitK;
+                   
+                   const k = t.k + (fitK - t.k) * 0.1;
+                   const x = t.x + (targetX - t.x) * 0.1;
+                   const y = t.y + (targetY - t.y) * 0.1;
+
+                   if (Math.abs(k - t.k) > 0.0001 || Math.hypot(x - t.x, y - t.y) > 0.1) {
+                       zoomBehavior.current.transform(svg, d3.zoomIdentity.translate(x, y).scale(k));
                    }
                }
            }
@@ -870,7 +705,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     });
 
     return () => { simulation.stop(); };
-  }, [tasks, showCompleted, selectedTaskId, isAutoScaling, dimensions, clearHoldTimer, theme]);
+  }, [tasks, showCompleted, selectedTaskId, dimensions, clearHoldTimer, theme]);
 
   useEffect(() => {
      if (!simulationRef.current) return;
@@ -884,7 +719,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
      sim.force('charge', d3.forceManyBody().strength((d: any) => {
         if (d.isCenter) return -600; 
         if (d.id === selectedTaskId) return -40; 
-        
         const base = -100;
         const sizeFactor = d.r ? d.r * 0.2 : 0; 
         return base - sizeFactor;
@@ -895,10 +729,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
             if (d.id === selectedTaskId) return MIN_BUBBLE_SIZE + 10;
             if (d.isCenter) return d.r + 25; 
             return d.r + 6; 
-        })
-        .strength(1)
-        .iterations(40)
-     );
+        }).strength(1).iterations(40));
 
      sim.velocityDecay(PHYSICS.vDecay);
      sim.alpha(0.8).restart();
@@ -906,7 +737,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
   const handleResetView = useCallback(() => {
     ensureAudio();
-    setIsAutoScaling(true);
+    isAutoScaling.current = true; // Manual reset re-enables auto-scale
     if (simulationRef.current) simulationRef.current.alpha(0.3).restart();
   }, []);
 
@@ -925,27 +756,14 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         .charging-shake {
           animation: shake-charge 0.08s infinite linear;
         }
-
-        /* Pulse Animation for Auto Scale Button Icon */
-        @keyframes pulse-icon {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.15); }
-        }
-        .animate-pulse-icon {
-            animation: pulse-icon 2s ease-in-out infinite;
-        }
-
-        /* Center Node Styles */
         .center-node .main-bubble {
-            stroke-width: 1.2px;
-            transition: all 0.3s ease;
+            stroke-width: 1.2px; transition: all 0.3s ease;
         }
         .center-node:hover .main-bubble {
             fill: url(#center-glass-gradient-hover) !important;
             stroke: ${theme === 'dark' ? 'white' : '#94a3b8'} !important;
             stroke-width: 1.5px !important;
         }
-        /* Icon Animation */
         .center-node .center-icon {
             transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
@@ -954,7 +772,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         }
       `}</style>
       
-      {/* AMBIENT BACKGROUND BLOBS - Adapted Opacity for Light Mode */}
       <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
          <div className={`absolute top-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-[#E879F9] blur-[120px] transition-opacity duration-500 ${theme === 'dark' ? 'opacity-20' : 'opacity-40'}`} />
          <div className={`absolute bottom-[-10%] left-[-10%] w-[60%] h-[60%] rounded-full bg-[#22D3EE] blur-[140px] transition-opacity duration-500 ${theme === 'dark' ? 'opacity-20' : 'opacity-40'}`} />
@@ -976,17 +793,12 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
       {selectedTaskId && selectedTask && (
           <>
-            <div className={`absolute inset-0 z-20 animate-fade-in cursor-pointer
-                ${theme === 'dark' ? 'bg-black/40 backdrop-blur-sm' : 'bg-slate-200/40 backdrop-blur-sm'}`} 
+            <div className={`absolute inset-0 z-20 animate-fade-in cursor-pointer ${theme === 'dark' ? 'bg-black/40 backdrop-blur-sm' : 'bg-slate-200/40 backdrop-blur-sm'}`} 
                 onClick={() => onEditTask(null as any)} />
             <div className="absolute inset-0 z-30 pointer-events-none">
                  <BubbleControls 
-                    task={selectedTask}
-                    boards={boards}
-                    startPos={editStartPos}
-                    onUpdate={(t) => onEditTask(t)}
-                    onDelete={onDeleteTask}
-                    onClose={() => onEditTask(null as any)}
+                    task={selectedTask} boards={boards} startPos={editStartPos}
+                    onUpdate={(t) => onEditTask(t)} onDelete={onDeleteTask} onClose={() => onEditTask(null as any)}
                     onPop={(coords) => handleProgrammaticPop(selectedTask, coords)}
                  />
             </div>
@@ -997,34 +809,17 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           <>
             {showEyeButton && (
                 <div className="absolute top-6 right-6 z-50">
-                    <button 
-                    onClick={onToggleShowCompleted} 
-                    className={`p-3 rounded-2xl transition-all shadow-lg active:scale-95
-                        bg-white/80 dark:bg-slate-900/20 
-                        hover:bg-white dark:hover:bg-slate-900/40 
-                        text-slate-700 dark:text-white/80 
-                        border border-slate-200 dark:border-white/10 
-                        backdrop-blur-xl
-                        ${isShowingCompleted 
-                            ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') 
-                            : ''}
-                    `}
-                    >
+                    <button onClick={onToggleShowCompleted} 
+                    className={`p-3 rounded-2xl transition-all shadow-lg active:scale-95 bg-white/80 dark:bg-slate-900/20 hover:bg-white dark:hover:bg-slate-900/40 text-slate-700 dark:text-white/80 border border-slate-200 dark:border-white/10 backdrop-blur-xl ${isShowingCompleted ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') : ''}`}>
                     {isShowingCompleted ? <Eye size={22} /> : <EyeOff size={22} />}
                     </button>
                 </div>
             )}
-
             <div className="absolute bottom-8 right-8 flex flex-col gap-3 z-50 items-center">
-                <button 
-                onClick={handleResetView} 
-                className={`p-3 rounded-2xl transition-all shadow-lg active:scale-95
-                    ${isAutoScaling 
-                        ? 'bg-blue-500/10 border-blue-200 text-blue-600 shadow-[0_0_15px_rgba(59,130,246,0.1)] hover:bg-blue-500/20 dark:bg-blue-500/30 dark:border-blue-400/50 dark:text-blue-100' 
-                        : 'bg-white/80 dark:bg-slate-900/20 hover:bg-white dark:hover:bg-slate-900/40 text-slate-700 dark:text-white/80 border border-slate-200 dark:border-white/10 backdrop-blur-xl'}
-                    `}
-                >
-                <Maximize size={22} className={!isAutoScaling ? 'animate-pulse-icon' : ''} />
+                <button onClick={handleResetView} 
+                className="p-3 rounded-2xl transition-all shadow-lg active:scale-95 bg-white/80 dark:bg-slate-900/20 hover:bg-white dark:hover:bg-slate-900/40 text-slate-700 dark:text-white/80 border border-slate-200 dark:border-white/10 backdrop-blur-xl"
+                title="Reset View">
+                    <Maximize size={22} />
                 </button>
             </div>
           </>
