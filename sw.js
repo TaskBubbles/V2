@@ -1,4 +1,4 @@
-const CACHE_NAME = 'task-bubbles-v14';
+const CACHE_NAME = 'task-bubbles-v15';
 
 const CRITICAL_ASSETS = [
   './index.html',
@@ -30,14 +30,20 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Navigation: Network First -> Cache -> /index.html Fallback
+  // Navigation: Network First -> Check Status 200 -> Cache -> Fallback
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
-           const clone = networkResponse.clone();
-           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-           return networkResponse;
+           // CRITICAL FIX: Only cache if the response is valid (200 OK)
+           // This prevents caching GitHub's 404 page if the network is weird or URL is wrong
+           if (networkResponse && networkResponse.status === 200) {
+               const clone = networkResponse.clone();
+               caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+               return networkResponse;
+           }
+           // If network returns 404 or other error, try to fall back to cache
+           throw new Error('Network response was not ok');
         })
         .catch(() => {
            return caches.match(event.request)
@@ -59,9 +65,7 @@ self.addEventListener('fetch', (event) => {
                     }
                     return networkResponse;
                 })
-                .catch(err => {
-                    // console.warn('Fetch failed for ' + event.request.url, err);
-                });
+                .catch(err => {});
             
             return cachedResponse || fetchPromise;
         })
