@@ -1,7 +1,7 @@
 {
   "name": "Task Bubbles",
   "short_name": "Task Bubbles",
-  "start_url": ".",
+  "start_url": "./index.html",
   "scope": ".",
   "display": "standalone",
   "background_color": "#020617",
