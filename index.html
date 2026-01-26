@@ -2,8 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#020617" />
+    
+    <!-- PWA / Apple Specific Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Bubbles" />
+    <link rel="apple-touch-icon" href="./assets/favicon-CKa0tncV.svg" />
+    
     <title>Task Bubbles</title>
     <link rel="icon" href="./assets/favicon-td6-yW8b.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="./assets/favicon-CKa0tncV.svg" />
@@ -43,12 +50,13 @@
     "uuid": "https://esm.sh/uuid@^13.0.0",
     "react-dom": "https://esm.sh/react-dom@^19.2.3",
     "vite": "https://esm.sh/vite@^7.3.1",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "vite-plugin-pwa": "https://esm.sh/vite-plugin-pwa@^1.2.0"
   }
 }
 </script>
-  <script type="module" crossorigin src="./assets/index-DEoN39OK.js"></script>
-</head>
+  <script type="module" crossorigin src="./assets/index-BumiNXZj.js"></script>
+<link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script></head>
   <body>
     <div id="root"></div>
   </body>
