@@ -1,6 +1,5 @@
-const CACHE_NAME = 'task-bubbles-v13';
+const CACHE_NAME = 'task-bubbles-v14';
 
-// Cache index.html and manifest immediately
 const CRITICAL_ASSETS = [
   './index.html',
   './manifest.json',
@@ -31,18 +30,16 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // NAVIGATION (HTML)
+  // Navigation: Network First -> Cache -> /index.html Fallback
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
-           // Update cache with fresh version
            const clone = networkResponse.clone();
            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
            return networkResponse;
         })
         .catch(() => {
-           // Offline fallback
            return caches.match(event.request)
              .then(resp => resp || caches.match('./index.html', { ignoreSearch: true }));
         })
@@ -50,26 +47,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // ASSETS (JS, CSS) - Stale-While-Revalidate Strategy
-  // This ensures the app loads fast from cache, but updates in background for next time.
-  // Crucial for bundled JS files.
-  if (event.request.destination === 'script' || event.request.destination === 'style') {
+  // Assets: Stale-While-Revalidate
+  if (event.request.destination === 'script' || event.request.destination === 'style' || event.request.destination === 'image') {
       event.respondWith(
         caches.match(event.request).then((cachedResponse) => {
-            const fetchPromise = fetch(event.request).then((networkResponse) => {
-                if(networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-                    const clone = networkResponse.clone();
-                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-                }
-                return networkResponse;
-            });
+            const fetchPromise = fetch(event.request)
+                .then((networkResponse) => {
+                    if(networkResponse && networkResponse.status === 200) {
+                        const clone = networkResponse.clone();
+                        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+                    }
+                    return networkResponse;
+                })
+                .catch(err => {
+                    // console.warn('Fetch failed for ' + event.request.url, err);
+                });
+            
             return cachedResponse || fetchPromise;
         })
       );
       return;
   }
 
-  // DEFAULT (Images, etc) - Cache First
+  // Default: Cache First
   event.respondWith(
     caches.match(event.request).then((response) => {
       return response || fetch(event.request);
