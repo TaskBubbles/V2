@@ -1,8 +1,7 @@
-const CACHE_NAME = 'task-bubbles-v3';
+const CACHE_NAME = 'task-bubbles-v4';
 const URLS_TO_CACHE = [
   './index.html',
   './manifest.json',
-  './favicon.svg',
   './favicon.ico'
 ];
 
