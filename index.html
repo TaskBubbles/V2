@@ -128,46 +128,21 @@
     <script type="module" src="./index.tsx"></script>
     
     <script>
+      // SW RESET SCRIPT
+      // This script forces unregistration of existing service workers to fix the 404 loop.
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          // Dynamic path resolution to prevent /assets/sw.js 404s
-          // This strips 'index.html' or 'assets/' from the path to find the root
-          let basePath = window.location.pathname;
-          
-          // Remove filename (e.g. /V2/index.html -> /V2/)
-          if (basePath.endsWith('.html')) {
-             basePath = basePath.substring(0, basePath.lastIndexOf('/'));
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          if (registrations.length > 0) {
+              console.log('Cleaning up old Service Workers...');
+              for(let registration of registrations) {
+                registration.unregister();
+              }
+              // Force a reload if we found workers, to ensure we get fresh network assets
+              // checking if we are already controlled
+              if (navigator.serviceWorker.controller) {
+                  window.location.reload();
+              }
           }
-          // Remove trailing slash
-          if (basePath.endsWith('/')) {
-             basePath = basePath.substring(0, basePath.length - 1);
-          }
-          // Handle accidental assets path (e.g. /V2/assets -> /V2)
-          if (basePath.endsWith('/assets')) {
-             basePath = basePath.substring(0, basePath.lastIndexOf('/assets'));
-          }
-
-          // Construct final URL
-          const swUrl = `${window.location.origin}${basePath}/sw.js`;
-          console.log('Registering SW at:', swUrl);
-
-          navigator.serviceWorker.register(swUrl, { scope: './' })
-            .then(reg => {
-              console.log('SW Registered:', reg.scope);
-              reg.onupdatefound = () => {
-                const installingWorker = reg.installing;
-                installingWorker.onstatechange = () => {
-                  if (installingWorker.state === 'installed') {
-                    if (navigator.serviceWorker.controller) {
-                      console.log('New content available; please refresh.');
-                    } else {
-                      console.log('Content is cached for offline use.');
-                    }
-                  }
-                };
-              };
-            })
-            .catch(err => showError('SW Registration Fail', `Path: ${swUrl}\n${err.message}`));
         });
       }
     </script>
