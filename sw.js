@@ -1,4 +1,4 @@
-const CACHE_NAME = 'task-bubbles-v6';
+const CACHE_NAME = 'task-bubbles-v7';
 const URLS_TO_CACHE = [
   './index.html',
   './manifest.json'
@@ -8,11 +8,11 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        // Critical assets only. If icons fail, the app still loads.
+        // Attempt to cache critical assets, but don't fail install if one is missing
         return cache.addAll(URLS_TO_CACHE);
       })
       .catch((error) => {
-        console.error('Failed to cache assets:', error);
+        console.warn('Pre-caching failed:', error);
       })
   );
   self.skipWaiting();
@@ -34,33 +34,31 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // 1. Navigation (HTML): Network First -> Cache Fallback
-  // This ensures the user always gets the latest index.html (pointing to latest JS hashes)
-  // preventing the "Blank Screen" issue caused by stale HTML referencing deleted JS files.
+  // 1. Navigation (HTML) - Network First
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
-          // Update cache with fresh HTML
+          // If network works, cache the fresh HTML
           if (networkResponse && networkResponse.status === 200) {
               const responseToCache = networkResponse.clone();
               caches.open(CACHE_NAME).then((cache) => {
-                  cache.put(event.request, responseToCache);
+                  // Cache it specifically as index.html so fallback works
+                  cache.put('./index.html', responseToCache);
               });
           }
           return networkResponse;
         })
         .catch(() => {
-          // Offline fallback
+          // Offline fallback: try to find index.html
           return caches.match('./index.html');
         })
     );
     return;
   }
 
-  // 2. Assets (JS/CSS/Images): Stale-While-Revalidate or Cache First
-  // For hashed assets (Vite), Cache First is safe. 
-  // For others, we try cache, then network.
+  // 2. Assets - Cache First, Network Fallback
+  // Only handle GET requests
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
@@ -70,11 +68,11 @@ self.addEventListener('fetch', (event) => {
       }
 
       return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || (networkResponse.type !== 'basic' && networkResponse.type !== 'cors')) {
+        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
           return networkResponse;
         }
 
-        // Cache new assets dynamically
+        // Cache new valid assets (same origin only)
         if (event.request.url.startsWith(self.location.origin)) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
@@ -83,8 +81,6 @@ self.addEventListener('fetch', (event) => {
         }
 
         return networkResponse;
-      }).catch(() => {
-        // Optional: Return a generic offline fallback image/asset if needed
       });
     })
   );
@@ -96,12 +92,14 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
+        // If a window is already open, focus it
         if (client.url && 'focus' in client) {
           return client.focus();
         }
       }
+      // Otherwise open new window at root
       if (clients.openWindow) {
-        return clients.openWindow('./');
+        return clients.openWindow('.');
       }
     })
   );

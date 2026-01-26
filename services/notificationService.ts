@@ -68,8 +68,8 @@ class NotificationService {
     const title = `Task Due: ${task.title}`;
     const options: NotificationOptions = {
         body: task.description || 'This task is now due.',
-        icon: './favicon.svg', 
-        badge: './favicon.svg',
+        icon: './favicon.ico', 
+        badge: './favicon.ico',
         tag: task.id, // Replace existing notification for same task
         silent: false,
         data: { url: './' }
