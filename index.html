@@ -130,12 +130,30 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          // Robust registration with console logging
-          navigator.serviceWorker.register('./sw.js', { scope: './' })
+          // Dynamic path resolution to prevent /assets/sw.js 404s
+          // This strips 'index.html' or 'assets/' from the path to find the root
+          let basePath = window.location.pathname;
+          
+          // Remove filename (e.g. /V2/index.html -> /V2/)
+          if (basePath.endsWith('.html')) {
+             basePath = basePath.substring(0, basePath.lastIndexOf('/'));
+          }
+          // Remove trailing slash
+          if (basePath.endsWith('/')) {
+             basePath = basePath.substring(0, basePath.length - 1);
+          }
+          // Handle accidental assets path (e.g. /V2/assets -> /V2)
+          if (basePath.endsWith('/assets')) {
+             basePath = basePath.substring(0, basePath.lastIndexOf('/assets'));
+          }
+
+          // Construct final URL
+          const swUrl = `${window.location.origin}${basePath}/sw.js`;
+          console.log('Registering SW at:', swUrl);
+
+          navigator.serviceWorker.register(swUrl, { scope: './' })
             .then(reg => {
               console.log('SW Registered:', reg.scope);
-              
-              // Check for updates
               reg.onupdatefound = () => {
                 const installingWorker = reg.installing;
                 installingWorker.onstatechange = () => {
@@ -149,7 +167,7 @@
                 };
               };
             })
-            .catch(err => showError('SW Registration Fail', err.message));
+            .catch(err => showError('SW Registration Fail', `Path: ${swUrl}\n${err.message}`));
         });
       }
     </script>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'task-bubbles-v16';
+const CACHE_NAME = 'task-bubbles-v17';
 
 const CRITICAL_ASSETS = [
   './index.html',
@@ -55,7 +55,6 @@ self.addEventListener('fetch', (event) => {
 
   // 2. Assets (JS, CSS, Images) - Stale-While-Revalidate
   // IMPORTANT: We do NOT fallback to index.html for these. 
-  // If a JS file is missing, returning HTML causes "Unexpected token <" syntax errors.
   if (
       event.request.destination === 'script' || 
       event.request.destination === 'style' || 
