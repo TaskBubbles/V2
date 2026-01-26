@@ -80,7 +80,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // PWA Install Prompt Listener
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
+      // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
+      console.log("Install prompt captured");
+      // Stash the event so it can be triggered later.
       setDeferredPrompt(e);
     };
 
@@ -92,9 +95,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
-    }
+    console.log(`User response to the install prompt: ${outcome}`);
+    setDeferredPrompt(null);
   };
 
   // Effect: Persist Sound
