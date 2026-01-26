@@ -5,155 +5,51 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#020617" />
     <title>Task Bubbles</title>
-    <link rel="manifest" href="./assets/manifest-DBizIl6E.json" />
     <link rel="icon" href="./assets/favicon-td6-yW8b.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="./assets/favicon-CKa0tncV.svg" />
-    
-    <!-- Tailwind CDN with error handling (Optional dev convenience, fallbacks below) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+      // Safe config assignment
       if (window.tailwind) {
-        tailwind.config = { darkMode: 'class' };
+        tailwind.config = {
+          darkMode: 'class',
+        }
+      } else {
+        console.warn("Tailwind CSS failed to load. Check network connection.");
       }
     </script>
-
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
-      
-      /* CRITICAL FALLBACK STYLES */
-      
-      html, body, #root {
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        background-color: #020617;
-        color: white;
+      body {
+        font-family: 'Poppins', sans-serif;
+        background-color: #020617; /* Deepest Midnight Blue fallback */
         overflow: hidden;
         overscroll-behavior: none;
       }
-      
-      body { font-family: 'Poppins', sans-serif; }
-      
-      ::-webkit-scrollbar { display: none; }
-      
-      /* LOADING SPINNER */
-      
-      .app-loader {
-        position: absolute;
-        top: 50%; left: 50%;
-        transform: translate(-50%, -50%);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 20px;
-        z-index: 0; /* Behind everything else once loaded */
-      }
-      
-      .spinner {
-        width: 50px;
-        height: 50px;
-        border: 4px solid rgba(255, 255, 255, 0.1);
-        border-top-color: #3b82f6;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-      }
-      
-      .loader-text {
-        font-size: 14px;
-        color: rgba(255, 255, 255, 0.5);
-        font-weight: 500;
-        letter-spacing: 0.05em;
-      }
-      
-      @keyframes spin { to { transform: rotate(360deg); } }
-      
-      /* ERROR BOX STYLES */
-      
-      #error-box {
+      /* Hide scrollbar for clean UI */
+      ::-webkit-scrollbar {
         display: none;
-        position: fixed;
-        bottom: 0; left: 0; right: 0;
-        background: rgba(220, 38, 38, 0.95);
-        color: white;
-        padding: 20px;
-        font-family: monospace;
-        font-size: 12px;
-        z-index: 10000;
-        white-space: pre-wrap;
-        max-height: 50vh;
-        overflow-y: auto;
       }
     </style>
-
-    <!-- ROBUST ERROR LOGGER -->
-    <script>
-      function showError(title, details) {
-        const box = document.getElementById('error-box');
-        if (box) {
-          box.style.display = 'block';
-          box.innerText += `[${title}]\n${details}\n\n`;
-          console.error(title, details);
-        }
-      }
-
-      window.onerror = function(msg, url, line, col, error) {
-        showError('JS Error', `${msg}\n${url}:${line}:${col}\n${error?.stack || ''}`);
-        return false;
-      };
-
-      window.addEventListener('unhandledrejection', function(event) {
-        showError('Promise Rejection', event.reason ? (event.reason.stack || event.reason) : 'Unknown reason');
-      });
-    </script>
 
 <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
     "d3": "https://esm.sh/d3@^7.9.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
-    "uuid": "https://esm.sh/uuid@^13.0.0",
-    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
     "vite": "https://esm.sh/vite@^7.3.1",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "uuid": "https://esm.sh/uuid@^13.0.0"
   }
 }
 </script>
-  <script type="module" crossorigin src="./assets/index-EXqNwixP.js"></script>
+  <script type="module" crossorigin src="./assets/index-R94_fAFl.js"></script>
 </head>
   <body>
-    <div id="root">
-        <!-- Visual Loading State (Removed by React when mounted) -->
-        <div class="app-loader">
-            <div class="spinner"></div>
-            <p class="loader-text">Loading Workspace...</p>
-        </div>
-    </div>
-    
-    <div id="error-box" onclick="this.style.display='none'"></div>
-
-    
-    <script>
-      // SW RESET SCRIPT
-      // This script forces unregistration of existing service workers to fix the 404 loop.
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          if (registrations.length > 0) {
-              console.log('Cleaning up old Service Workers...');
-              for(let registration of registrations) {
-                registration.unregister();
-              }
-              // Force a reload if we found workers, to ensure we get fresh network assets
-              // checking if we are already controlled
-              if (navigator.serviceWorker.controller) {
-                  window.location.reload();
-              }
-          }
-        });
-      }
-    </script>
+    <div id="root"></div>
   </body>
 </html>
