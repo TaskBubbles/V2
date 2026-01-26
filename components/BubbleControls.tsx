@@ -719,7 +719,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                             )}
 
                             {/* Bottom: Single Row Scrollable */}
-                            <div className="flex items-center gap-4 overflow-x-auto no-scrollbar pb-1 px-1">
+                            <div className="flex items-center gap-4 pb-1 px-1 overflow-visible">
                                 <div className="flex items-center gap-2 shrink-0">
                                     {renderBoardSelector()}
                                     {renderToolsGroup()}

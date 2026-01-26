@@ -92,7 +92,8 @@ const App: React.FC = () => {
 
   // Initialize with dummy data ONLY if this is the first run ever
   useEffect(() => {
-    const isInitialized = localStorage.getItem('app_initialized');
+    // Check for v2 initialization to fix missing defaults for existing users
+    const isInitialized = localStorage.getItem('app_initialized_v2');
     if (!isInitialized && tasks.length === 0) {
       setTasks([
         { 
@@ -116,7 +117,7 @@ const App: React.FC = () => {
             subtasks: [], color: COLORS[1], size: 45, completed: false
         }, // Orange - Smallest
       ]);
-      localStorage.setItem('app_initialized', 'true');
+      localStorage.setItem('app_initialized_v2', 'true');
     }
   }, []); // Run once on mount
 

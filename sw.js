@@ -1,4 +1,4 @@
-const CACHE_NAME = 'task-bubbles-v1';
+const CACHE_NAME = 'task-bubbles-v2';
 const URLS_TO_CACHE = [
   './',
   './index.html'
