@@ -8,6 +8,5 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-  },
-  publicDir: './' // Treat root as public so manifest.json and sw.js are copied
+  }
 });

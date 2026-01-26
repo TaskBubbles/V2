@@ -1,14 +1,14 @@
-const CACHE_NAME = 'task-bubbles-v7';
+const CACHE_NAME = 'task-bubbles-v8';
 const URLS_TO_CACHE = [
   './index.html',
-  './manifest.json'
+  './manifest.json',
+  './favicon.ico'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        // Attempt to cache critical assets, but don't fail install if one is missing
         return cache.addAll(URLS_TO_CACHE);
       })
       .catch((error) => {
@@ -34,23 +34,25 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // 1. Navigation (HTML) - Network First
+  // 1. Navigation (HTML) - Network First with strict 404 handling
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
-          // If network works, cache the fresh HTML
-          if (networkResponse && networkResponse.status === 200) {
-              const responseToCache = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => {
-                  // Cache it specifically as index.html so fallback works
-                  cache.put('./index.html', responseToCache);
-              });
+          // If network returns 404 or error, assume offline/broken and try cache
+          if (!networkResponse || networkResponse.status !== 200) {
+             throw new Error('Network navigation failed');
           }
+          
+          // If good, clone and cache (update the specific request URL)
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+          });
           return networkResponse;
         })
         .catch(() => {
-          // Offline fallback: try to find index.html
+          // Fallback to the cached index.html entry point
           return caches.match('./index.html');
         })
     );
@@ -58,7 +60,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   // 2. Assets - Cache First, Network Fallback
-  // Only handle GET requests
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
@@ -72,7 +73,6 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         }
 
-        // Cache new valid assets (same origin only)
         if (event.request.url.startsWith(self.location.origin)) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
@@ -88,18 +88,15 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
-        // If a window is already open, focus it
         if (client.url && 'focus' in client) {
           return client.focus();
         }
       }
-      // Otherwise open new window at root
       if (clients.openWindow) {
-        return clients.openWindow('.');
+        return clients.openWindow('./index.html');
       }
     })
   );
