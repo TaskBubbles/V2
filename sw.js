@@ -1,4 +1,4 @@
-const CACHE_NAME = 'task-bubbles-v10';
+const CACHE_NAME = 'task-bubbles-v11';
 
 // Critical items - if these fail, SW installation fails
 const CRITICAL_ASSETS = [
@@ -24,8 +24,6 @@ self.addEventListener('install', (event) => {
       })
       .catch((error) => {
         console.error('Critical asset caching failed:', error);
-        // We don't throw here to allow the SW to activate, 
-        // but realistically offline won't work without index.html
       })
   );
   self.skipWaiting();
@@ -52,7 +50,6 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
-          // Check for valid response (not 404)
           if (!networkResponse || networkResponse.status !== 200) {
              throw new Error('Network navigation failed or 404');
           }
@@ -63,11 +60,9 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         })
         .catch(() => {
-          // If network fails, try the specific page, then fallback to root index.html
           return caches.match(event.request)
             .then(response => {
                 if (response) return response;
-                // Fallback: This handles the /V2/ vs /V2/index.html mismatch
                 return caches.match('./index.html', { ignoreSearch: true });
             });
         })
@@ -95,7 +90,6 @@ self.addEventListener('fetch', (event) => {
             return networkResponse;
         }
 
-        // Cache same-origin assets (bundled JS/CSS) and explicitly allowed CDNs
         const url = event.request.url;
         if (url.startsWith(self.location.origin) || url.includes('cdn.tailwindcss.com')) {
             const responseToCache = networkResponse.clone();
@@ -122,7 +116,6 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
       if (clients.openWindow) {
-        // Use root relative path to be safe
         return clients.openWindow('.');
       }
     })
