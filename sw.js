@@ -1,15 +1,14 @@
-const CACHE_NAME = 'task-bubbles-v3';
+const CACHE_NAME = 'task-bubbles-v6';
 const URLS_TO_CACHE = [
   './index.html',
-  './manifest.json',
-  './favicon.svg',
-  './favicon.ico'
+  './manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
+        // Critical assets only. If icons fail, the app still loads.
         return cache.addAll(URLS_TO_CACHE);
       })
       .catch((error) => {
@@ -35,16 +34,33 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Handle navigation requests for SPA
+  // 1. Navigation (HTML): Network First -> Cache Fallback
+  // This ensures the user always gets the latest index.html (pointing to latest JS hashes)
+  // preventing the "Blank Screen" issue caused by stale HTML referencing deleted JS files.
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      caches.match('./index.html').then((response) => {
-        return response || fetch(event.request);
-      })
+      fetch(event.request)
+        .then((networkResponse) => {
+          // Update cache with fresh HTML
+          if (networkResponse && networkResponse.status === 200) {
+              const responseToCache = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                  cache.put(event.request, responseToCache);
+              });
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          // Offline fallback
+          return caches.match('./index.html');
+        })
     );
     return;
   }
 
+  // 2. Assets (JS/CSS/Images): Stale-While-Revalidate or Cache First
+  // For hashed assets (Vite), Cache First is safe. 
+  // For others, we try cache, then network.
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
@@ -58,6 +74,7 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         }
 
+        // Cache new assets dynamically
         if (event.request.url.startsWith(self.location.origin)) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
@@ -67,7 +84,7 @@ self.addEventListener('fetch', (event) => {
 
         return networkResponse;
       }).catch(() => {
-        // Offline fallback
+        // Optional: Return a generic offline fallback image/asset if needed
       });
     })
   );
