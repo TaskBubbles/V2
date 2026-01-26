@@ -76,16 +76,6 @@ class NotificationService {
     };
 
     try {
-        // Use Service Worker for notifications if available (Standard PWA approach)
-        if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
-            const registration = await navigator.serviceWorker.ready;
-            // Check if active to avoid errors during initial load
-            if (registration.active) {
-                await registration.showNotification(title, options);
-                return;
-            }
-        }
-
         // Fallback for standard web context
         const n = new Notification(title, options);
         n.onclick = () => {

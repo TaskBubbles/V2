@@ -6,7 +6,7 @@
   "homepage": "https://taskbubbles.github.io/V2/",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && cp manifest.json dist/ && cp sw.js dist/ && cp favicon.ico dist/ && cp favicon.svg dist/",
+    "build": "vite build && cp favicon.ico dist/ && cp favicon.svg dist/",
     "preview": "vite preview"
   },
   "dependencies": {

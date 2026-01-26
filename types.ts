@@ -35,8 +35,3 @@ export interface Board {
   id: string;
   name: string;
 }
-
-export interface Vector2 {
-  x: number;
-  y: number;
-}
