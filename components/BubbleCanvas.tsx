@@ -829,7 +829,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
        allNodes.attr('transform', d => `translate(${d.x},${d.y})`);
 
-       if (zoomBehavior.current && svgRef.current) {
+       if (zoomBehavior.current) {
            const cx = dimensions.width / 2;
            const cy = dimensions.height / 2;
            let maxDistX = 0, maxDistY = 0;
@@ -861,7 +861,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
                    if (Math.abs(k - current.k) > 0.0001 || Math.abs(x - current.x) > 0.1 || Math.abs(y - current.y) > 0.1) {
                        const newTransform = d3.zoomIdentity.translate(x, y).scale(k);
-                       d3.select(svgRef.current).call(zoomBehavior.current.transform, newTransform);
+                       // OPTIMIZATION: Use cached 'svg' selection instead of querying DOM
+                       svg.call(zoomBehavior.current.transform, newTransform);
                    }
                }
            }

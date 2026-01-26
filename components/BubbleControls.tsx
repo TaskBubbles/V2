@@ -46,6 +46,8 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const isMobile = winDim.w < 768;
 
   const viewportRef = useRef<HTMLDivElement>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const ringRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const colorSectionRef = useRef<HTMLDivElement>(null);
@@ -146,36 +148,36 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
          startDistRef.current = dist - (newSize - startSizeRef.current);
     }
 
-    if (viewportRef.current) {
-        const bubble = viewportRef.current.querySelector('.bubble-main') as HTMLElement;
-        const ring = viewportRef.current.querySelector('.resize-ring') as HTMLElement;
-        
-        const diameter = newSize * 2;
-        const ringDia = diameter + 60; 
+    // Optimization: Use Direct Refs instead of querySelector
+    const bubble = bubbleRef.current;
+    const ring = ringRef.current;
+    
+    const diameter = newSize * 2;
+    const ringDia = diameter + 60; 
 
-        if (bubble) {
-            bubble.style.width = `${diameter}px`;
-            bubble.style.height = `${diameter}px`;
+    if (bubble) {
+        bubble.style.width = `${diameter}px`;
+        bubble.style.height = `${diameter}px`;
+        
+        // We still query the inner text div because it's wrapped in contentEditable
+        const textEl = bubble.querySelector('.bubble-text-inner') as HTMLElement;
+        if (textEl) {
+            // Use placeholder text for sizing if title is empty
+            const currentText = (textEl.innerText || "").trim();
+            const textToMeasure = currentText || "Task Name";
+            const fontSize = calculateFontSize(newSize, textToMeasure);
+            textEl.style.fontSize = `${fontSize}px`;
             
-            const textEl = bubble.querySelector('.bubble-text-inner') as HTMLElement;
-            if (textEl) {
-                // Use placeholder text for sizing if title is empty
-                const currentText = (textEl.innerText || "").trim();
-                const textToMeasure = currentText || "Task Name";
-                const fontSize = calculateFontSize(newSize, textToMeasure);
-                textEl.style.fontSize = `${fontSize}px`;
-                
-                // Update placeholder size too if it exists
-                const placeholderEl = bubble.querySelector('.placeholder-text') as HTMLElement;
-                if (placeholderEl) {
-                    placeholderEl.style.fontSize = `${fontSize}px`;
-                }
+            // Update placeholder size too if it exists
+            const placeholderEl = bubble.querySelector('.placeholder-text') as HTMLElement;
+            if (placeholderEl) {
+                placeholderEl.style.fontSize = `${fontSize}px`;
             }
         }
-        if (ring) {
-            ring.style.width = `${ringDia}px`;
-            ring.style.height = `${ringDia}px`;
-        }
+    }
+    if (ring) {
+        ring.style.width = `${ringDia}px`;
+        ring.style.height = `${ringDia}px`;
     }
   };
 
@@ -266,8 +268,6 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const progress = subtasks.length > 0 ? (completedCount / subtasks.length) * 100 : 0;
 
   // Placeholder Logic
-  // Show placeholder if title is empty. We ignore isFocused so the placeholder persists
-  // until the user actually types, which is better UX when auto-focus is off.
   const isPlaceholderVisible = !hasText;
   
   // Calculate font size using task title OR placeholder text
@@ -575,6 +575,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
           {/* Resize Ring - Hidden during pop */}
           {!showDeleteConfirm && !isPopping && (
             <div 
+                ref={ringRef}
                 className="resize-ring absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-2 border-dashed border-slate-400/30 dark:border-white/40 rounded-full pointer-events-auto"
                 style={{ width: ringDiameter, height: ringDiameter, touchAction: 'none' }}
             >
@@ -586,7 +587,8 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
           )}
 
           {/* Bubble (Text Editor) */}
-          <div onClick={(e) => { e.stopPropagation(); textRef.current?.focus(); }}
+          <div ref={bubbleRef}
+               onClick={(e) => { e.stopPropagation(); textRef.current?.focus(); }}
                className={`bubble-main pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center cursor-text ${isResizing ? 'transition-none' : 'transition-all duration-300'}`}
                style={{ 
                    width: bubbleDiameter, 
@@ -629,7 +631,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                           const newSize = calculateFontSize(currentSizeRef.current, text || 'Task Name');
                           e.currentTarget.style.fontSize = `${newSize}px`;
                           
-                          // Also update placeholder size in real-time just in case
+                          // Also update placeholder size too if it exists
                           const placeholderEl = viewportRef.current?.querySelector('.placeholder-text') as HTMLElement;
                           if (placeholderEl) placeholderEl.style.fontSize = `${newSize}px`;
                        }}
