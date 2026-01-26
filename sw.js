@@ -1,4 +1,4 @@
-const CACHE_NAME = 'task-bubbles-v15';
+const CACHE_NAME = 'task-bubbles-v16';
 
 const CRITICAL_ASSETS = [
   './index.html',
@@ -7,11 +7,11 @@ const CRITICAL_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting(); // Activate immediately
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(CRITICAL_ASSETS))
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -30,31 +30,39 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Navigation: Network First -> Check Status 200 -> Cache -> Fallback
+  const url = new URL(event.request.url);
+
+  // 1. Navigation (HTML)
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
-           // CRITICAL FIX: Only cache if the response is valid (200 OK)
-           // This prevents caching GitHub's 404 page if the network is weird or URL is wrong
+           // Only cache valid 200 OK responses
            if (networkResponse && networkResponse.status === 200) {
                const clone = networkResponse.clone();
                caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
                return networkResponse;
            }
-           // If network returns 404 or other error, try to fall back to cache
-           throw new Error('Network response was not ok');
+           throw new Error('Network response not ok');
         })
         .catch(() => {
-           return caches.match(event.request)
-             .then(resp => resp || caches.match('./index.html', { ignoreSearch: true }));
+           // Offline fallback to index.html
+           return caches.match('./index.html', { ignoreSearch: true });
         })
     );
     return;
   }
 
-  // Assets: Stale-While-Revalidate
-  if (event.request.destination === 'script' || event.request.destination === 'style' || event.request.destination === 'image') {
+  // 2. Assets (JS, CSS, Images) - Stale-While-Revalidate
+  // IMPORTANT: We do NOT fallback to index.html for these. 
+  // If a JS file is missing, returning HTML causes "Unexpected token <" syntax errors.
+  if (
+      event.request.destination === 'script' || 
+      event.request.destination === 'style' || 
+      event.request.destination === 'image' ||
+      url.pathname.endsWith('.js') || 
+      url.pathname.endsWith('.css')
+  ) {
       event.respondWith(
         caches.match(event.request).then((cachedResponse) => {
             const fetchPromise = fetch(event.request)
@@ -65,7 +73,9 @@ self.addEventListener('fetch', (event) => {
                     }
                     return networkResponse;
                 })
-                .catch(err => {});
+                .catch(err => {
+                    // console.warn('Fetch failed for asset', event.request.url);
+                });
             
             return cachedResponse || fetchPromise;
         })
@@ -73,7 +83,7 @@ self.addEventListener('fetch', (event) => {
       return;
   }
 
-  // Default: Cache First
+  // 3. Default: Cache First, Network Fallback
   event.respondWith(
     caches.match(event.request).then((response) => {
       return response || fetch(event.request);
