@@ -1,7 +1,9 @@
 const CACHE_NAME = 'task-bubbles-v2';
 const URLS_TO_CACHE = [
   './',
-  './index.html'
+  './index.html',
+  './favicon.svg',
+  './favicon.ico'
 ];
 
 self.addEventListener('install', (event) => {
