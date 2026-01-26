@@ -1,19 +1,31 @@
-const CACHE_NAME = 'task-bubbles-v9';
-const URLS_TO_CACHE = [
+const CACHE_NAME = 'task-bubbles-v10';
+
+// Critical items - if these fail, SW installation fails
+const CRITICAL_ASSETS = [
   './index.html',
   './manifest.json',
-  './favicon.ico',
-  'https://cdn.tailwindcss.com' // Explicitly cache Tailwind
+  './favicon.ico'
+];
+
+// Optional items - SW will install even if these fail (e.g. CORS issues)
+const OPTIONAL_ASSETS = [
+  'https://cdn.tailwindcss.com'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(URLS_TO_CACHE);
+      .then(async (cache) => {
+        // Try caching optional assets without blocking
+        cache.addAll(OPTIONAL_ASSETS).catch(err => console.warn('Optional asset caching failed:', err));
+        
+        // Block on critical assets
+        return cache.addAll(CRITICAL_ASSETS);
       })
       .catch((error) => {
-        console.warn('Pre-caching failed:', error);
+        console.error('Critical asset caching failed:', error);
+        // We don't throw here to allow the SW to activate, 
+        // but realistically offline won't work without index.html
       })
   );
   self.skipWaiting();
@@ -35,13 +47,14 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // 1. Navigation (HTML) - Network First
+  // 1. Navigation (HTML) - Network First, Fallback to Cache
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
+          // Check for valid response (not 404)
           if (!networkResponse || networkResponse.status !== 200) {
-             throw new Error('Network navigation failed');
+             throw new Error('Network navigation failed or 404');
           }
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -50,14 +63,19 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         })
         .catch(() => {
-          // Robust fallback: ignore query params like ?utm_source=pwa
-          return caches.match('./index.html', { ignoreSearch: true });
+          // If network fails, try the specific page, then fallback to root index.html
+          return caches.match(event.request)
+            .then(response => {
+                if (response) return response;
+                // Fallback: This handles the /V2/ vs /V2/index.html mismatch
+                return caches.match('./index.html', { ignoreSearch: true });
+            });
         })
     );
     return;
   }
 
-  // 2. Assets (JS, CSS, Images, Fonts) - Cache First
+  // 2. Assets (JS, CSS, Images) - Cache First, Network Fallback
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
@@ -67,22 +85,17 @@ self.addEventListener('fetch', (event) => {
       }
 
       return fetch(event.request).then((networkResponse) => {
-        // Validate response
-        // Allow 'basic' (same-origin) AND 'cors' (external CDNs like Tailwind)
-        // Ensure status is 200
         if (!networkResponse || networkResponse.status !== 200) {
           return networkResponse;
         }
-        
-        // Only cache valid types to avoid caching errors
+
         const type = networkResponse.type;
+        // Allow basic (same-origin) and cors (external CDN)
         if (type !== 'basic' && type !== 'cors') {
             return networkResponse;
         }
 
-        // Cache Strategy:
-        // 1. Same Origin files
-        // 2. Tailwind CDN
+        // Cache same-origin assets (bundled JS/CSS) and explicitly allowed CDNs
         const url = event.request.url;
         if (url.startsWith(self.location.origin) || url.includes('cdn.tailwindcss.com')) {
             const responseToCache = networkResponse.clone();
@@ -92,9 +105,8 @@ self.addEventListener('fetch', (event) => {
         }
 
         return networkResponse;
-      }).catch((e) => {
-          console.error("Fetch failed for:", event.request.url, e);
-          // Return nothing (undefined), forcing browser to handle network error
+      }).catch(() => {
+          // Silent fail for assets
       });
     })
   );
@@ -110,7 +122,8 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
       if (clients.openWindow) {
-        return clients.openWindow('./');
+        // Use root relative path to be safe
+        return clients.openWindow('.');
       }
     })
   );
