@@ -1,7 +1,7 @@
-const CACHE_NAME = 'task-bubbles-v2';
+const CACHE_NAME = 'task-bubbles-v3';
 const URLS_TO_CACHE = [
-  './',
   './index.html',
+  './manifest.json',
   './favicon.svg',
   './favicon.ico'
 ];
@@ -11,6 +11,9 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then((cache) => {
         return cache.addAll(URLS_TO_CACHE);
+      })
+      .catch((error) => {
+        console.error('Failed to cache assets:', error);
       })
   );
   self.skipWaiting();
@@ -32,6 +35,16 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Handle navigation requests for SPA
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      caches.match('./index.html').then((response) => {
+        return response || fetch(event.request);
+      })
+    );
+    return;
+  }
+
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
@@ -45,7 +58,6 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         }
 
-        // Only cache requests from our own origin to avoid CORS issues with CDNs
         if (event.request.url.startsWith(self.location.origin)) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
@@ -55,7 +67,7 @@ self.addEventListener('fetch', (event) => {
 
         return networkResponse;
       }).catch(() => {
-        // Optional: Return offline fallback here if desired
+        // Offline fallback
       });
     })
   );
@@ -66,13 +78,11 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If a window is already open, focus it.
       for (const client of clientList) {
         if (client.url && 'focus' in client) {
           return client.focus();
         }
       }
-      // Otherwise open a new window.
       if (clients.openWindow) {
         return clients.openWindow('./');
       }
