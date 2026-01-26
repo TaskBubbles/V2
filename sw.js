@@ -1,8 +1,9 @@
-const CACHE_NAME = 'task-bubbles-v8';
+const CACHE_NAME = 'task-bubbles-v9';
 const URLS_TO_CACHE = [
   './index.html',
   './manifest.json',
-  './favicon.ico'
+  './favicon.ico',
+  'https://cdn.tailwindcss.com' // Explicitly cache Tailwind
 ];
 
 self.addEventListener('install', (event) => {
@@ -34,17 +35,14 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // 1. Navigation (HTML) - Network First with strict 404 handling
+  // 1. Navigation (HTML) - Network First
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
-          // If network returns 404 or error, assume offline/broken and try cache
           if (!networkResponse || networkResponse.status !== 200) {
              throw new Error('Network navigation failed');
           }
-          
-          // If good, clone and cache (update the specific request URL)
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
               cache.put(event.request, responseToCache);
@@ -52,28 +50,41 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         })
         .catch(() => {
-          // Fallback to the cached index.html entry point
-          return caches.match('./index.html');
+          // Robust fallback: ignore query params like ?utm_source=pwa
+          return caches.match('./index.html', { ignoreSearch: true });
         })
     );
     return;
   }
 
-  // 2. Assets - Cache First, Network Fallback
+  // 2. Assets (JS, CSS, Images, Fonts) - Cache First
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
+    caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
 
       return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+        // Validate response
+        // Allow 'basic' (same-origin) AND 'cors' (external CDNs like Tailwind)
+        // Ensure status is 200
+        if (!networkResponse || networkResponse.status !== 200) {
           return networkResponse;
         }
+        
+        // Only cache valid types to avoid caching errors
+        const type = networkResponse.type;
+        if (type !== 'basic' && type !== 'cors') {
+            return networkResponse;
+        }
 
-        if (event.request.url.startsWith(self.location.origin)) {
+        // Cache Strategy:
+        // 1. Same Origin files
+        // 2. Tailwind CDN
+        const url = event.request.url;
+        if (url.startsWith(self.location.origin) || url.includes('cdn.tailwindcss.com')) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
                 cache.put(event.request, responseToCache);
@@ -81,6 +92,9 @@ self.addEventListener('fetch', (event) => {
         }
 
         return networkResponse;
+      }).catch((e) => {
+          console.error("Fetch failed for:", event.request.url, e);
+          // Return nothing (undefined), forcing browser to handle network error
       });
     })
   );
@@ -96,7 +110,7 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
       if (clients.openWindow) {
-        return clients.openWindow('./index.html');
+        return clients.openWindow('./');
       }
     })
   );
