@@ -80,10 +80,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // PWA Install Prompt Listener
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
-      // Prevent the mini-infobar from appearing on mobile
-      e.preventDefault();
+      // NOTE: We do NOT prevent default here anymore, so the native browser prompt can show.
+      // We still capture the event to allow the custom button to work if the user dismisses the native prompt.
       console.log("Install prompt captured");
-      // Stash the event so it can be triggered later.
       setDeferredPrompt(e);
     };
 
