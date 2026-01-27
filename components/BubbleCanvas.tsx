@@ -86,6 +86,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   const zoomEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAutoScaling = useRef(true); // Default to Auto Scaling ON
   const prevTaskCount = useRef(tasks.length);
+  const prevTasksHash = useRef('');
+  const lastFitKRef = useRef(0);
   
   // Stores the calculated "floor" zoom level
   const minZoomRef = useRef(0.1);
@@ -449,6 +451,17 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     const height = dimensions.height;
     
     const visibleTasks = showCompleted ? tasks : tasks.filter(t => !t.completed);
+    
+    // Check if we are doing a full restart (Data Change) or soft restart (Resize)
+    const currentTasksHash = visibleTasks.map(t => t.id + t.completed + (t.x || 0)).join('|');
+    const isDataChange = currentTasksHash !== prevTasksHash.current;
+    // We only update hash if data changed significantly, ignoring minor float pos changes
+    // But for initial load, tracking ID length is enough.
+    // Let's stick to checking ID+Completed state
+    const simpleHash = visibleTasks.map(t => t.id + t.completed).join('|');
+    const isRealDataChange = simpleHash !== prevTasksHash.current;
+    prevTasksHash.current = simpleHash;
+
     const oldNodes: SimulationNode[] = simulationRef.current?.nodes() || [];
     const oldNodesMap = new Map(oldNodes.map(n => [n.id, n]));
 
@@ -479,7 +492,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         .alphaMin(0.0001).alphaDecay(0.02); 
     } else {
       simulationRef.current.nodes(nodes);
-      simulationRef.current.alpha(1).restart();
+      // Gentle restart on resize, stronger on data change
+      simulationRef.current.alpha(isRealDataChange ? 0.8 : 0.3).restart();
     }
     const simulation = simulationRef.current;
     const svg = d3.select(svgRef.current);
@@ -688,22 +702,25 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
            minZoomRef.current = fitK;
 
-           // --- DYNAMIC CONSTRAINTS (Gated by interaction state to prevent flicker) ---
+           // --- DYNAMIC CONSTRAINTS (Gated by interaction state and change threshold) ---
            if (!isUserInteracting.current && zoomBehavior.current) {
-                // Apply Scale Extent: Snap bottom to fitK (Hard Stop for "Max Zoom Out")
-                zoomBehavior.current.scaleExtent([fitK, MAX_ZOOM_IN]);
-                
-                // Calculate the world size visible at max zoom (fitK)
-                const worldVisibleW = dimensions.width / fitK;
-                const worldVisibleH = dimensions.height / fitK;
+                // Only update if fitK changed significantly (e.g. layout change) to prevent flickering
+                if (Math.abs(fitK - lastFitKRef.current) > 0.005) {
+                    lastFitKRef.current = fitK;
+                    
+                    // Apply Scale Extent: Snap bottom to fitK (Hard Stop for "Max Zoom Out")
+                    zoomBehavior.current.scaleExtent([fitK, MAX_ZOOM_IN]);
+                    
+                    // Calculate the world size visible at max zoom (fitK)
+                    const worldVisibleW = dimensions.width / fitK;
+                    const worldVisibleH = dimensions.height / fitK;
 
-                // Set translate extent exactly to the viewport world size at max zoom.
-                // This locks the view to center when zoomed out fully, ensuring the Plus button is centered.
-                // When zoomed in, the viewport is smaller than this extent, allowing panning.
-                zoomBehavior.current.translateExtent([
-                   [simCx - worldVisibleW / 2, simCy - worldVisibleH / 2],
-                   [simCx + worldVisibleW / 2, simCy + worldVisibleH / 2]
-                ]);
+                    // Set translate extent exactly to the viewport world size at max zoom.
+                    zoomBehavior.current.translateExtent([
+                       [simCx - worldVisibleW / 2, simCy - worldVisibleH / 2],
+                       [simCx + worldVisibleW / 2, simCy + worldVisibleH / 2]
+                    ]);
+                }
            }
 
            // AUTOMATIC DRIFT (Seamless "Snap-to-Fit")
