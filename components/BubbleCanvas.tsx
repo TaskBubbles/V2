@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Task, Board } from '../types';
 import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, CENTER_RADIUS, calculateFontSize, POP_THRESHOLD_MS } from '../constants';
-import { Maximize, Eye, EyeOff } from 'lucide-react';
+import { Maximize, Trash2, Trash } from 'lucide-react';
 import { audioService } from '../services/audioService';
 import { BubbleControls } from './BubbleControls';
 
@@ -49,6 +49,9 @@ const MIN_ZOOM_HARD_LIMIT = 0.02;
 // Padding around the bubbles when calculating the "Perfect Fit"
 const VIEWPORT_PADDING = 60;
 
+// Unified FAB Styling
+const FAB_CLASS = "p-3 rounded-2xl transition-all shadow-lg active:scale-95 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-white/10 text-slate-700 dark:text-white/80 hover:bg-white/60 dark:hover:bg-slate-900/60 hover:scale-105 hover:text-slate-900 dark:hover:text-white";
+
 export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   tasks,
   activeTask,
@@ -66,6 +69,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const trashBtnRef = useRef<HTMLButtonElement>(null);
+
   const simulationRef = useRef<d3.Simulation<SimulationNode, undefined> | null>(null);
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   
@@ -94,6 +99,9 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   // Zoom State for Tooltip
   const [isZoomedIn, setIsZoomedIn] = useState(false);
   const isZoomedInRef = useRef(false);
+  
+  // Drag to Trash State
+  const [isHoveringTrash, setIsHoveringTrash] = useState(false);
 
   const hasResumedAudio = useRef(false);
   const ensureAudio = () => {
@@ -210,6 +218,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
               d.fy = null;
               draggingNodeRef.current = null;
               isDraggingRef.current = false;
+              setIsHoveringTrash(false);
               clearHoldTimer();
               if (simulationRef.current) simulationRef.current.alphaTarget(0);
           }
@@ -298,6 +307,33 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
           if (draggingNodeRef.current.isCenter) return;
 
+          // Collision Detection with Trash
+          if (trashBtnRef.current && showEyeButton) {
+              const trashRect = trashBtnRef.current.getBoundingClientRect();
+              const mx = event.clientX;
+              const my = event.clientY;
+              const buffer = 20; // Hitbox padding
+
+              const isOver = (
+                  mx >= trashRect.left - buffer && 
+                  mx <= trashRect.right + buffer && 
+                  my >= trashRect.top - buffer && 
+                  my <= trashRect.bottom + buffer
+              );
+
+              if (isOver !== isHoveringTrash) {
+                  setIsHoveringTrash(isOver);
+                  if (isOver) {
+                       // Haptic feedback or audio tick could go here
+                       audioService.playHover();
+                  }
+              }
+              
+              // Apply shake to dragged node if hovering trash
+              const nodeEl = d3.select(`#node-${draggingNodeRef.current.id} .shake-group`);
+              nodeEl.classed('charging-shake', isOver);
+          }
+
           event.preventDefault(); 
           event.stopPropagation();
 
@@ -318,6 +354,17 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       if (draggingNodeRef.current) {
           const d = draggingNodeRef.current;
           
+          // --- DROP TO TRASH LOGIC ---
+          if (isHoveringTrash && showEyeButton) {
+              handleProgrammaticPop(d.originalTask);
+              setIsHoveringTrash(false);
+              draggingNodeRef.current = null;
+              isDraggingRef.current = false;
+              d.fx = null; d.fy = null;
+              try { (event.target as Element).releasePointerCapture(event.pointerId); } catch(e) {}
+              return;
+          }
+
           if (!isDraggingRef.current && !didPopRef.current && activePointers.current.size === 0) {
               if (d.isCenter) {
                   if (!selectedTaskId) onAddTask();
@@ -339,6 +386,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           }
           draggingNodeRef.current = null;
           isDraggingRef.current = false;
+          setIsHoveringTrash(false);
           clearHoldTimer();
           
           if (simulationRef.current) {
@@ -561,7 +609,9 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     shaker.append('circle').attr('class', 'pop-ring').attr('fill', 'none').attr('stroke', theme === 'dark' ? '#ffffff' : '#64748b').attr('stroke-width', 4).attr('opacity', 0).style('pointer-events', 'none')
         .attr('transform', 'rotate(-90)');
 
-    shaker.append('circle').attr('class', 'main-bubble transition-colors duration-300').attr('stroke-width', 0);
+    shaker.append('circle')
+        .attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`)
+        .attr('stroke-width', 0);
 
     shaker.append('g').attr('class', 'text-content pointer-events-none')
          .append('foreignObject').append('xhtml:div')
@@ -786,6 +836,9 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   }, []);
 
   const selectedTask = activeTask || tasks.find(t => t.id === selectedTaskId);
+  
+  // Logic to determine if trash is "open" (spilled or receiving)
+  const isTrashOpen = isShowingCompleted || isHoveringTrash;
 
   return (
     <div ref={wrapperRef} className="w-full h-full relative bg-slate-50 dark:bg-[#020617] overflow-hidden transition-colors duration-500" onPointerDown={ensureAudio}>
@@ -852,23 +905,36 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       {!selectedTaskId && (
           <>
             {showEyeButton && (
-                <div className="absolute top-6 right-6 z-50">
-                    <button onClick={onToggleShowCompleted} 
-                    className={`p-3 rounded-2xl transition-all shadow-lg active:scale-95 bg-white/80 dark:bg-slate-900/20 hover:bg-white dark:hover:bg-slate-900/40 text-slate-700 dark:text-white/80 border border-slate-200 dark:border-white/10 backdrop-blur-xl ${isShowingCompleted ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') : ''}`}>
-                    {isShowingCompleted ? <Eye size={22} /> : <EyeOff size={22} />}
+                <div className="absolute bottom-8 left-8 z-50">
+                    <button 
+                        ref={trashBtnRef}
+                        onClick={onToggleShowCompleted} 
+                        className={`${FAB_CLASS} ${isHoveringTrash ? 'bg-red-500/20 border-red-500 text-red-500 scale-125' : ''} ${isShowingCompleted ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') : ''}`}
+                    >
+                    <div className={`transition-transform duration-500 relative ${isShowingCompleted ? 'rotate-[135deg]' : 'rotate-0'}`}>
+                         {isTrashOpen ? <Trash size={22} /> : <Trash2 size={22} />}
+                         
+                         {/* Debris particles - Only visible when spilled (and rotated) */}
+                         {isShowingCompleted && (
+                             <div className="absolute -top-3 left-0 w-full h-full flex justify-center gap-1 pointer-events-none">
+                                <div className="w-1 h-1 bg-current rounded-full opacity-80" />
+                                <div className="w-1.5 h-1.5 bg-current rounded-sm opacity-80 translate-y-1" />
+                                <div className="w-1 h-1 bg-current rounded-full opacity-80" />
+                             </div>
+                         )}
+                    </div>
                     </button>
                 </div>
             )}
-            <div className="absolute bottom-8 right-8 flex flex-col gap-3 z-50 items-center">
-                {/* Reset Zoom Tooltip */}
-                <div className={`absolute bottom-full mb-3 px-3 py-1.5 bg-slate-800/90 dark:bg-white/90 text-white dark:text-slate-900 text-[10px] font-bold rounded-lg shadow-lg backdrop-blur-sm transition-all duration-300 pointer-events-none whitespace-nowrap
-                    ${isZoomedIn ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+            
+            <div className={`absolute bottom-8 right-8 z-50 flex flex-col items-center transition-all duration-300 ${isZoomedIn ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
+                {/* Reset Zoom Tooltip - To the Left */}
+                <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-slate-800/90 dark:bg-white/90 text-white dark:text-slate-900 text-[10px] font-bold rounded-lg shadow-lg backdrop-blur-sm whitespace-nowrap pointer-events-none">
                     Reset Zoom
                 </div>
-                
                 <button onClick={handleResetView} 
-                className="p-3 rounded-2xl transition-all shadow-lg active:scale-95 bg-white/80 dark:bg-slate-900/20 hover:bg-white dark:hover:bg-slate-900/40 text-slate-700 dark:text-white/80 border border-slate-200 dark:border-white/10 backdrop-blur-xl"
-                title="Reset View">
+                  className={FAB_CLASS}
+                  title="Reset View">
                     <Maximize size={22} />
                 </button>
             </div>

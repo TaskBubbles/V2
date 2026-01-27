@@ -103,14 +103,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id="sidebar-toggle"
         onClick={() => setIsOpen(true)}
         className={`absolute top-6 left-6 p-3 rounded-2xl transition-all shadow-lg z-30 group 
-            bg-white/30 dark:bg-slate-900/20 
-            hover:bg-white/50 dark:hover:bg-slate-900/40 
+            bg-white/40 dark:bg-slate-900/40 
+            hover:bg-white/60 dark:hover:bg-slate-900/60
+            hover:scale-105 active:scale-95
             text-slate-700 dark:text-white/80 
-            border border-white/60 dark:border-white/10 
+            hover:text-slate-900 dark:hover:text-white
+            border border-white/40 dark:border-white/10 
             backdrop-blur-xl
             ${isHidden ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'}`}
       >
-        <Menu size={22} className="group-active:scale-95 transition-transform" />
+        <Menu size={22} className="" />
       </button>
 
       {/* Backdrop */}

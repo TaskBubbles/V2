@@ -5,8 +5,11 @@ import { Sidebar } from './components/Sidebar';
 import { TaskListView } from './components/TaskListView';
 import { Task, Board, User } from './types';
 import { COLORS } from './constants';
-import { LayoutList } from 'lucide-react';
+import { LayoutList, ChevronUp } from 'lucide-react';
 import { notificationService } from './services/notificationService';
+
+// Unified FAB Styling
+const FAB_CLASS = "p-3 rounded-2xl transition-all shadow-lg active:scale-95 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-white/10 text-slate-700 dark:text-white/80 hover:bg-white/60 dark:hover:bg-slate-900/60 hover:scale-105 hover:text-slate-900 dark:hover:text-white";
 
 const App: React.FC = () => {
   // --- STATE INITIALIZATION WITH PERSISTENCE ---
@@ -37,7 +40,8 @@ const App: React.FC = () => {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [isListViewOpen, setIsListViewOpen] = useState(false);
-  
+  const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
+
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
       const saved = localStorage.getItem('theme');
       return (saved === 'light' || saved === 'dark') ? saved : 'light';
@@ -89,6 +93,13 @@ const App: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [tasks]);
+
+  // Close board menu on outside click
+  useEffect(() => {
+      const close = () => setIsBoardMenuOpen(false);
+      if (isBoardMenuOpen) window.addEventListener('click', close);
+      return () => window.removeEventListener('click', close);
+  }, [isBoardMenuOpen]);
 
   // Initialize with dummy data ONLY if this is the first run ever
   useEffect(() => {
@@ -289,23 +300,78 @@ const App: React.FC = () => {
       {/* Bottom Floating Interface */}
       {!editingTaskId && (
         <>
-            {/* List View Button - Bottom Left */}
-            <div className="absolute bottom-8 left-8 z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
+            {/* List View Button - Top Right */}
+            <div className="absolute top-6 right-6 z-40 animate-in slide-in-from-top-10 fade-in duration-500">
                 <button 
                     onClick={() => setIsListViewOpen(true)}
-                    className="p-3.5 rounded-2xl bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-white/10 text-slate-700 dark:text-white/90 shadow-xl hover:scale-105 active:scale-95 transition-all hover:bg-white/60 dark:hover:bg-slate-900/60 group"
+                    className={FAB_CLASS}
                     title="List View"
                 >
-                    <LayoutList size={24} className="opacity-80 group-hover:opacity-100" />
+                    <LayoutList size={22} className="" />
                 </button>
             </div>
 
-            {/* Workspace Name - Center Bottom */}
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-10 fade-in duration-500 pointer-events-none">
-                 <div className="px-6 py-2.5 rounded-full bg-white/30 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-lg flex items-center justify-center min-w-[140px]">
-                    <span className="text-sm font-bold text-slate-800 dark:text-white leading-none whitespace-nowrap shadow-sm">
-                        {getCurrentBoardName()}
-                    </span>
+            {/* Workspace Name & Menu - Center Bottom */}
+            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
+                 <div className="relative">
+                     {/* Menu Pop-up */}
+                     <div 
+                        className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 bg-white/60 dark:bg-slate-900/60 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/50 dark:border-white/10 overflow-hidden transition-all duration-300 origin-bottom
+                        ${isBoardMenuOpen ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-90 translate-y-4 pointer-events-none'}`}
+                     >
+                        <div className="p-1.5 flex flex-col gap-0.5">
+                            {boards.map(b => (
+                                <button
+                                    key={b.id}
+                                    onClick={() => { setCurrentBoardId(b.id); setIsBoardMenuOpen(false); }}
+                                    className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors
+                                    ${currentBoardId === b.id 
+                                        ? 'bg-white/50 dark:bg-white/10 text-slate-900 dark:text-white' 
+                                        : 'text-slate-600 dark:text-white/60 hover:bg-white/30 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'}`}
+                                >
+                                    {b.name}
+                                </button>
+                            ))}
+                            
+                            <div className="h-px bg-slate-200 dark:bg-white/10 my-1 mx-2" />
+                            
+                            <button
+                                onClick={() => { setCurrentBoardId('ALL'); setIsBoardMenuOpen(false); }}
+                                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors
+                                ${currentBoardId === 'ALL' 
+                                    ? 'bg-white/50 dark:bg-white/10 text-slate-900 dark:text-white' 
+                                    : 'text-slate-600 dark:text-white/60 hover:bg-white/30 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'}`}
+                            >
+                                All Tasks
+                            </button>
+                            <button
+                                onClick={() => { setCurrentBoardId('COMPLETED'); setIsBoardMenuOpen(false); }}
+                                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors
+                                ${currentBoardId === 'COMPLETED' 
+                                    ? 'bg-white/50 dark:bg-white/10 text-slate-900 dark:text-white' 
+                                    : 'text-slate-600 dark:text-white/60 hover:bg-white/30 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'}`}
+                            >
+                                Completed
+                            </button>
+                        </div>
+                     </div>
+
+                     {/* Main Button */}
+                     <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setIsBoardMenuOpen(!isBoardMenuOpen);
+                        }}
+                        className={`px-6 py-2.5 rounded-full backdrop-blur-xl border shadow-lg flex items-center justify-center gap-2 min-w-[140px] transition-all hover:scale-105 active:scale-95
+                        ${isBoardMenuOpen 
+                            ? 'bg-white/60 dark:bg-slate-800/60 border-white/60 dark:border-white/20' 
+                            : 'bg-white/30 dark:bg-slate-900/40 border-white/40 dark:border-white/10 hover:bg-white/50 dark:hover:bg-slate-900/60'}`}
+                     >
+                        <span className="text-sm font-bold text-slate-800 dark:text-white leading-none whitespace-nowrap shadow-sm">
+                            {getCurrentBoardName()}
+                        </span>
+                        <ChevronUp size={14} className={`text-slate-500 dark:text-white/50 transition-transform duration-300 ${isBoardMenuOpen ? 'rotate-180' : ''}`} />
+                     </button>
                  </div>
             </div>
         </>
