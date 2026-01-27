@@ -165,7 +165,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       })
       .on('start', (event) => {
          if (event.sourceEvent) {
-             svg.classed('is-zooming', true); // Enable performance optimization mode
              if (zoomEndTimeoutRef.current) {
                  clearTimeout(zoomEndTimeoutRef.current);
                  zoomEndTimeoutRef.current = null;
@@ -178,7 +177,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
          if (event.sourceEvent) {
              // Debounce the end event to prevent flicker on rapid events (e.g. wheel)
              zoomEndTimeoutRef.current = setTimeout(() => {
-                 svg.classed('is-zooming', false); // Disable performance optimization mode
                  isUserInteracting.current = false;
                  zoomEndTimeoutRef.current = null;
              }, 150);
@@ -563,11 +561,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     shaker.append('circle').attr('class', 'pop-ring').attr('fill', 'none').attr('stroke', theme === 'dark' ? '#ffffff' : '#64748b').attr('stroke-width', 4).attr('opacity', 0).style('pointer-events', 'none')
         .attr('transform', 'rotate(-90)');
 
-    // Render the main bubble circle
-    // OPTIMIZATION: Removed 'backdrop-blur-sm' from standard bubbles to prevent flickering on mobile zoom
-    shaker.append('circle')
-        .attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : ''}`)
-        .attr('stroke-width', 0);
+    shaker.append('circle').attr('class', 'main-bubble transition-colors duration-300').attr('stroke-width', 0);
 
     shaker.append('g').attr('class', 'text-content pointer-events-none')
          .append('foreignObject').append('xhtml:div')
@@ -599,8 +593,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         .attr('stroke', d => d.isCenter ? 'url(#center-glass-stroke)' : 'none')
         .attr('stroke-width', d => d.isCenter ? null : 0) 
         .style('filter', d => d.isCenter ? (theme === 'dark' ? 'drop-shadow(0px 8px 32px rgba(0,0,0,0.25))' : 'drop-shadow(0px 8px 24px rgba(0,0,0,0.15))') : (theme === 'dark' ? 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))' : 'drop-shadow(0px 4px 16px rgba(148, 163, 184, 0.4))'))
-        // Re-apply class logic with new optimization
-        .attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : ''}`);
+        .attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`);
 
     allNodes.select('.pop-ring')
         .attr('r', d => d.r + 3).attr('stroke', theme === 'dark' ? '#ffffff' : '#64748b')
@@ -624,8 +617,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
                 const dateStr = isToday ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 const dateSize = Math.max(9, d.r * 0.18);
                 const pillColor = isOverdue ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.2)';
-                // optimization: using date-pill class instead of inline backdrop-filter
-                html += `<div style="margin-top: 6px;"><div class="date-pill" style="background: ${pillColor}; font-size: ${dateSize}px;">${dateStr}</div></div>`;
+                html += `<div style="margin-top: 6px;"><div style="display: inline-block; background: ${pillColor}; padding: 2px 8px; border-radius: 99px; font-size: ${dateSize}px; color: white; font-weight: 600; backdrop-filter: blur(4px);">${dateStr}</div></div>`;
             }
             if (subtaskCount > 0) html += `<div style="margin-top: 4px; font-size: ${d.r * 0.2}px; opacity: 0.8; font-weight: 600;">${completedSubtasks}/${subtaskCount}</div>`;
             return html;
@@ -796,7 +788,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   const selectedTask = activeTask || tasks.find(t => t.id === selectedTaskId);
 
   return (
-    <div ref={wrapperRef} className="w-full h-full relative bg-slate-50 dark:bg-[#020617] overflow-hidden transition-colors duration-500 transform-gpu" onPointerDown={ensureAudio}>
+    <div ref={wrapperRef} className="w-full h-full relative bg-slate-50 dark:bg-[#020617] overflow-hidden transition-colors duration-500" onPointerDown={ensureAudio}>
       <style>{`
         @keyframes shake-charge {
           0% { transform: translate(0, 0); }
@@ -821,41 +813,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         }
         .center-node:hover .center-icon {
             transform: scale(1.1);
-        }
-        
-        /* --- Performance Optimizations --- */
-        .canvas-content {
-           will-change: transform;
-           /* Force hardware acceleration for the zoom container */
-           transform: translate3d(0, 0, 0); 
-        }
-
-        /* Mobile Optimization: Aggressively disable expensive effects during zoom */
-        /* This prevents "flickering squares" by removing complex filters while scaling */
-        .is-zooming * {
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            box-shadow: none !important;
-            filter: none !important;
-            transition: none !important; /* Stop transitions during zoom to save CPU */
-        }
-        
-        /* Date Pill Styling */
-        .date-pill {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 99px;
-            color: white;
-            font-weight: 600;
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
-        }
-
-        /* Fix for Safari flickering rectangles */
-        .main-bubble, .bubble-text-container {
-            -webkit-backface-visibility: hidden;
-            backface-visibility: hidden;
-            transform: translateZ(0);
         }
       `}</style>
       
