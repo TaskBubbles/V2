@@ -40,7 +40,7 @@ const App: React.FC = () => {
   
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
       const saved = localStorage.getItem('theme');
-      return (saved === 'light' || saved === 'dark') ? saved : 'dark';
+      return (saved === 'light' || saved === 'dark') ? saved : 'light';
   });
   
   // Mock User State with Persistence

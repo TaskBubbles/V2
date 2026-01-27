@@ -38,7 +38,12 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const [showDescription, setShowDescription] = useState(false);
   const [showSubtasks, setShowSubtasks] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
-  const [isFocused, setIsFocused] = useState(false);
+  
+  // Explicit Edit Mode: Prevents keyboard from opening automatically
+  const [isEditing, setIsEditing] = useState(false);
+  // Guard to prevent the click that opened the controls from immediately triggering edit mode
+  const [interactionReady, setInteractionReady] = useState(false);
+
   const [hasText, setHasText] = useState(!!task.title);
   
   // Dimensions state to handle resize updates
@@ -67,12 +72,24 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => { const t = setTimeout(() => setIsCentered(true), 20); return () => clearTimeout(t); }, []);
+  useEffect(() => { 
+      const t = setTimeout(() => setIsCentered(true), 20); 
+      // Allow interaction after a short delay to prevent click-through from opening action
+      const t2 = setTimeout(() => setInteractionReady(true), 300);
+      return () => { clearTimeout(t); clearTimeout(t2); }; 
+  }, []);
 
   // Update hasText when task title changes prop-side (e.g. undo/redo or initial load)
   useEffect(() => {
       setHasText(!!task.title);
   }, [task.title]);
+
+  // Handle Focus when Edit Mode activates
+  useEffect(() => {
+      if (isEditing && textRef.current) {
+          textRef.current.focus();
+      }
+  }, [isEditing]);
 
   // Handle outside click for color grid
   useEffect(() => {
@@ -118,6 +135,8 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     e.stopPropagation(); 
     e.preventDefault();
     setIsResizing(true);
+    // Disable edit mode during resize
+    setIsEditing(false);
     
     const cx = window.innerWidth / 2;
     const cy = isMobile ? window.innerHeight * 0.35 : window.innerHeight / 2;
@@ -465,7 +484,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
   // 4. Color Picker
   const renderColorPicker = () => (
-    <div ref={colorSectionRef} className="relative group/colors z-10 shrink-0">
+    <div ref={colorSectionRef} className={`relative group/colors z-10 shrink-0 ${isMobile ? 'w-full' : ''}`}>
                             
         {/* EXPANDED CONTAINER */}
         <div 
@@ -478,7 +497,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
             style={{ width: isMobile ? '100%' : 'max-content' }}
         >
                 {/* Top Row */}
-                <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-3 justify-center'}`}>
+                <div className={`flex items-center ${isMobile ? 'justify-between px-4' : 'gap-3 justify-center'}`}>
                     {COLOR_GROUPS.map((group) => (
                         <button
                             key={`${group.name}-light`}
@@ -492,7 +511,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                 </div>
                 
                 {/* Middle Row */}
-                <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-3 justify-center'}`}>
+                <div className={`flex items-center ${isMobile ? 'justify-between px-4' : 'gap-3 justify-center'}`}>
                     {COLOR_GROUPS.map((group) => (
                         <button
                             key={`${group.name}-dark`}
@@ -507,7 +526,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
         </div>
 
         {/* BASE ROW */}
-        <div className={`flex items-center ${isMobile ? 'justify-between gap-1' : 'gap-2 justify-center'}`}>
+        <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-2 justify-center'}`}>
             {COLOR_GROUPS.map((group) => {
                 const displayColor = group.shades[1];
                 const isActive = group.shades.includes(task.color);
@@ -586,9 +605,31 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
             </div>
           )}
 
+          {/* Tap to Edit Tooltip - Only visible when not focused and not resizing */}
+          {!isEditing && !isResizing && !isPopping && !showDeleteConfirm && (
+             <div 
+                className="absolute left-1/2 -translate-x-1/2 top-1/2 pointer-events-none z-30 animate-in fade-in slide-in-from-bottom-2 duration-500"
+                style={{ marginTop: `-${currentFontSize * 0.8 + 14}px`, transform: 'translate(-50%, -100%)' }}
+             >
+                <div className="px-3 py-1.5 rounded-lg bg-white/90 dark:bg-slate-800/90 backdrop-blur-md shadow-lg border border-slate-200 dark:border-slate-700">
+                    <span className="text-[10px] font-bold text-slate-900 dark:text-white tracking-wide uppercase whitespace-nowrap">
+                        Tap to edit
+                    </span>
+                </div>
+                {/* Little triangle arrow pointing down */}
+                <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-white/90 dark:border-t-slate-800/90 absolute left-1/2 -translate-x-1/2 -bottom-[6px]" />
+             </div>
+          )}
+
           {/* Bubble (Text Editor) */}
           <div ref={bubbleRef}
-               onClick={(e) => { e.stopPropagation(); textRef.current?.focus(); }}
+               onClick={(e) => { 
+                   e.stopPropagation(); 
+                   if (!interactionReady) return; // Prevent initial click from triggering edit mode
+                   setIsEditing(true);
+                   // Slight delay to ensure render happens before focus
+                   setTimeout(() => textRef.current?.focus(), 0);
+               }}
                className={`bubble-main pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center cursor-text ${isResizing ? 'transition-none' : 'transition-all duration-300'}`}
                style={{ 
                    width: bubbleDiameter, 
@@ -613,16 +654,15 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                   )}
 
                   {/* EDITABLE CONTENT */}
-                  <div ref={textRef} contentEditable suppressContentEditableWarning 
+                  <div ref={textRef} 
+                       contentEditable={isEditing} 
+                       suppressContentEditableWarning 
                        onBlur={(e) => {
                           const text = e.currentTarget.innerText.trim();
-                          setIsFocused(false);
+                          setIsEditing(false);
                           // We do NOT reset to 'Task Name' string here to avoid selection issues.
                           // We just save empty string if empty, and let the overlay handle the visual.
                           onUpdate({...task, title: text});
-                       }}
-                       onFocus={(e) => {
-                          setIsFocused(true);
                        }}
                        onInput={(e) => {
                           const text = e.currentTarget.innerText;
@@ -692,7 +732,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
                             {/* Row 3: Colors (Centered) */}
                             <div className="flex items-center justify-center mt-3">
-                                <div className="overflow-x-visible">
+                                <div className="overflow-x-visible w-full">
                                      {renderColorPicker()}
                                 </div>
                             </div>

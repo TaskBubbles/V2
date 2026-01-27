@@ -44,9 +44,10 @@ const PHYSICS = {
 
 // The maximum you can zoom in (e.g., 4x magnification)
 const MAX_ZOOM_IN = 4;
+// A hard floor for the zoom behavior to allow "elastic" zooming out beyond the fit
+const MIN_ZOOM_HARD_LIMIT = 0.02;
 // Padding around the bubbles when calculating the "Perfect Fit"
-// Reduced from 160 to 20 to make bubbles fill the screen almost to the edge
-const VIEWPORT_PADDING = 20;
+const VIEWPORT_PADDING = 60;
 
 export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   tasks,
@@ -59,7 +60,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   selectedTaskId,
   showCompleted,
   showEyeButton,
-  onToggleShowCompleted,
+  onToggleShowCompleted: onToggleShowCompleted,
   isShowingCompleted,
   theme = 'dark',
 }) => {
@@ -82,11 +83,15 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
   const zoomBehavior = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const isUserInteracting = useRef(false);
+  const zoomEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAutoScaling = useRef(true); // Default to Auto Scaling ON
   const prevTaskCount = useRef(tasks.length);
   
   // Stores the calculated "floor" zoom level
   const minZoomRef = useRef(0.1);
+  // Zoom State for Tooltip
+  const [isZoomedIn, setIsZoomedIn] = useState(false);
+  const isZoomedInRef = useRef(false);
 
   const hasResumedAudio = useRef(false);
   const ensureAudio = () => {
@@ -147,7 +152,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     const g = svg.select<SVGGElement>('.canvas-content');
 
     zoomBehavior.current = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, MAX_ZOOM_IN]) // Initial limits, updated dynamically in tick
+      .scaleExtent([MIN_ZOOM_HARD_LIMIT, MAX_ZOOM_IN]) 
       .filter((event) => {
          if (event.type === 'touchstart' && event.touches.length > 1) return true; 
          if (event.type === 'wheel') return true;
@@ -158,17 +163,33 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       })
       .on('start', (event) => {
          if (event.sourceEvent) {
+             if (zoomEndTimeoutRef.current) {
+                 clearTimeout(zoomEndTimeoutRef.current);
+                 zoomEndTimeoutRef.current = null;
+             }
              isUserInteracting.current = true;
              isAutoScaling.current = false; // User intervention breaks auto-scale
          }
       })
       .on('end', (event) => {
          if (event.sourceEvent) {
-             isUserInteracting.current = false;
+             // Debounce the end event to prevent flicker on rapid events (e.g. wheel)
+             zoomEndTimeoutRef.current = setTimeout(() => {
+                 isUserInteracting.current = false;
+                 zoomEndTimeoutRef.current = null;
+             }, 150);
          }
       })
       .on('zoom', (event) => {
         g.attr('transform', event.transform.toString());
+        
+        // Update Zoom State for Tooltip (Throttled via check)
+        const k = event.transform.k;
+        const isZoomed = k > minZoomRef.current * 1.1; // 10% threshold above fit
+        if (isZoomed !== isZoomedInRef.current) {
+             isZoomedInRef.current = isZoomed;
+             setIsZoomedIn(isZoomed);
+        }
       });
 
     svg.call(zoomBehavior.current).on('dblclick.zoom', null);
@@ -630,7 +651,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
            const simCx = dimensions.width / 2;
            const simCy = dimensions.height / 2;
 
-           // Calculate bounds relative to the CENTER NODE
+           // Calculate Bounds (Symmetric for Fit, Actual for Extent)
            let maxDistX = 0;
            let maxDistY = 0;
            let hasNodes = false;
@@ -638,9 +659,9 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
            nodes.forEach(n => {
               if (n.x === undefined || n.y === undefined) return;
               hasNodes = true;
-              const r = n.r + 20; // Radius + Padding/Shadow
+              const r = n.r + 20; 
               
-              // Distance from center axis
+              // Distance from center (Symmetric calc for FitK to align with simulation center)
               const dx = Math.abs(n.x - simCx) + r;
               const dy = Math.abs(n.y - simCy) + r;
 
@@ -663,21 +684,27 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
            let fitK = Math.min(scaleX, scaleY);
            
            fitK = Math.min(fitK, MAX_ZOOM_IN);
-           fitK = Math.max(fitK, 0.1); 
+           fitK = Math.max(fitK, MIN_ZOOM_HARD_LIMIT); 
 
            minZoomRef.current = fitK;
 
-           // Update Constraints
-           zoomBehavior.current.scaleExtent([fitK, MAX_ZOOM_IN]); 
-           
-           // Update Pan Extents
-           const extW = requiredW / 2; 
-           const extH = requiredH / 2;
-           
-           zoomBehavior.current.translateExtent([
-               [simCx - extW, simCy - extH],
-               [simCx + extW, simCy + extH]
-           ]);
+           // --- DYNAMIC CONSTRAINTS (Gated by interaction state to prevent flicker) ---
+           if (!isUserInteracting.current && zoomBehavior.current) {
+                // Apply Scale Extent: Snap bottom to fitK (Hard Stop for "Max Zoom Out")
+                zoomBehavior.current.scaleExtent([fitK, MAX_ZOOM_IN]);
+                
+                // Calculate the world size visible at max zoom (fitK)
+                const worldVisibleW = dimensions.width / fitK;
+                const worldVisibleH = dimensions.height / fitK;
+
+                // Set translate extent exactly to the viewport world size at max zoom.
+                // This locks the view to center when zoomed out fully, ensuring the Plus button is centered.
+                // When zoomed in, the viewport is smaller than this extent, allowing panning.
+                zoomBehavior.current.translateExtent([
+                   [simCx - worldVisibleW / 2, simCy - worldVisibleH / 2],
+                   [simCx + worldVisibleW / 2, simCy + worldVisibleH / 2]
+                ]);
+           }
 
            // AUTOMATIC DRIFT (Seamless "Snap-to-Fit")
            if (!isUserInteracting.current && !selectedTaskId) {
@@ -816,6 +843,12 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
                 </div>
             )}
             <div className="absolute bottom-8 right-8 flex flex-col gap-3 z-50 items-center">
+                {/* Reset Zoom Tooltip */}
+                <div className={`absolute bottom-full mb-3 px-3 py-1.5 bg-slate-800/90 dark:bg-white/90 text-white dark:text-slate-900 text-[10px] font-bold rounded-lg shadow-lg backdrop-blur-sm transition-all duration-300 pointer-events-none whitespace-nowrap
+                    ${isZoomedIn ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+                    Reset Zoom
+                </div>
+                
                 <button onClick={handleResetView} 
                 className="p-3 rounded-2xl transition-all shadow-lg active:scale-95 bg-white/80 dark:bg-slate-900/20 hover:bg-white dark:hover:bg-slate-900/40 text-slate-700 dark:text-white/80 border border-slate-200 dark:border-white/10 backdrop-blur-xl"
                 title="Reset View">
