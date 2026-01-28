@@ -110,7 +110,7 @@ const App: React.FC = () => {
   }, [isBoardMenuOpen]);
 
   useEffect(() => {
-    const isInitialized = localStorage.getItem('app_initialized_v4');
+    const isInitialized = localStorage.getItem('app_initialized_v3');
     if (!isInitialized && tasks.length === 0) {
       setTasks([
         { id: '1', boardId: '1', title: 'Hold to Pop', subtasks: [], color: COLORS[0], size: 110, completed: false },
@@ -119,7 +119,7 @@ const App: React.FC = () => {
         { id: '4', boardId: '1', title: '+\nAdd Tasks', subtasks: [], color: COLORS[3], size: 70, completed: false },
         { id: '5', boardId: '1', title: 'Drag to\nOrganize', subtasks: [], color: COLORS[1], size: 45, completed: false },
       ]);
-      localStorage.setItem('app_initialized_v4', 'true');
+      localStorage.setItem('app_initialized_v3', 'true');
     }
   }, []);
 
@@ -313,7 +313,7 @@ const App: React.FC = () => {
                 </button>
             </div>
 
-            <div className="absolute bottom-[max(2.5rem,calc(env(safe-area-inset-bottom))+1.5rem))] left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
+            <div className="absolute bottom-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))] left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
                  <div className="relative">
                      <div 
                         ref={boardMenuRef}

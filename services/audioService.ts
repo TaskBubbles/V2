@@ -61,7 +61,6 @@ class AudioService {
 
     gain.gain.setValueAtTime(0, startTime);
     gain.gain.linearRampToValueAtTime(0.6, startTime + 0.004); 
-    // Smooth decay to zero without clicks
     gain.gain.setTargetAtTime(0.0001, startTime + 0.05, 0.03);
 
     osc.connect(gain);
