@@ -1,12 +1,12 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { BubbleCanvas } from './components/BubbleCanvas';
 import { Sidebar } from './components/Sidebar';
 import { TaskListView } from './components/TaskListView';
 import { Task, Board, User } from './types';
-import { COLORS, FAB_BASE_CLASS } from './constants';
-import { LayoutList, ChevronUp } from 'lucide-react';
+import { COLORS, FAB_BASE_CLASS, GLASS_PANEL_CLASS, MENU_ITEM_CLASS, MENU_ITEM_ACTIVE_CLASS, MENU_ITEM_INACTIVE_CLASS } from './constants';
+import { LayoutList } from 'lucide-react';
 import { notificationService } from './services/notificationService';
 
 const App: React.FC = () => {
@@ -36,7 +36,13 @@ const App: React.FC = () => {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [isListViewOpen, setIsListViewOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
+  const [dragHoveredBoardId, setDragHoveredBoardId] = useState<string | null>(null);
+  
+  const boardMenuRef = useRef<HTMLDivElement>(null);
+  const boardButtonRef = useRef<HTMLButtonElement>(null);
+  const menuWasOpenOnDown = useRef(false);
 
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
       const saved = localStorage.getItem('theme');
@@ -83,13 +89,28 @@ const App: React.FC = () => {
   }, [tasks]);
 
   useEffect(() => {
-      const close = () => setIsBoardMenuOpen(false);
-      if (isBoardMenuOpen) window.addEventListener('click', close);
-      return () => window.removeEventListener('click', close);
+      const handleOutsideClick = (e: PointerEvent) => {
+          if (!isBoardMenuOpen) return;
+          
+          const target = e.target as Node;
+          const isMenuClick = boardMenuRef.current?.contains(target);
+          const isButtonClick = boardButtonRef.current?.contains(target);
+          
+          if (!isMenuClick && !isButtonClick) {
+              setIsBoardMenuOpen(false);
+          }
+      };
+
+      if (isBoardMenuOpen) {
+          document.addEventListener('pointerdown', handleOutsideClick, true);
+      }
+      return () => {
+          document.removeEventListener('pointerdown', handleOutsideClick, true);
+      };
   }, [isBoardMenuOpen]);
 
   useEffect(() => {
-    const isInitialized = localStorage.getItem('app_initialized_v2');
+    const isInitialized = localStorage.getItem('app_initialized_v4');
     if (!isInitialized && tasks.length === 0) {
       setTasks([
         { id: '1', boardId: '1', title: 'Hold to Pop', subtasks: [], color: COLORS[0], size: 110, completed: false },
@@ -98,7 +119,7 @@ const App: React.FC = () => {
         { id: '4', boardId: '1', title: '+\nAdd Tasks', subtasks: [], color: COLORS[3], size: 70, completed: false },
         { id: '5', boardId: '1', title: 'Drag to\nOrganize', subtasks: [], color: COLORS[1], size: 45, completed: false },
       ]);
-      localStorage.setItem('app_initialized_v2', 'true');
+      localStorage.setItem('app_initialized_v4', 'true');
     }
   }, []);
 
@@ -166,11 +187,66 @@ const App: React.FC = () => {
       return boards.find(b => b.id === currentBoardId)?.name || 'Unknown Board';
   };
 
+  const dragStartRef = useRef<{ x: number, y: number } | null>(null);
+  const isDraggingBoardRef = useRef(false);
+
+  const handleBoardPointerDown = (e: React.PointerEvent) => {
+    menuWasOpenOnDown.current = isBoardMenuOpen;
+    setIsBoardMenuOpen(true);
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    isDraggingBoardRef.current = false;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handleBoardPointerMove = (e: React.PointerEvent) => {
+    if (!dragStartRef.current) return;
+    
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    
+    if (!isDraggingBoardRef.current && Math.hypot(dx, dy) > 10) {
+        isDraggingBoardRef.current = true;
+    }
+
+    if (isDraggingBoardRef.current) {
+        const elements = document.elementsFromPoint(e.clientX, e.clientY);
+        const boardEl = elements.find(el => (el as HTMLElement).dataset.boardId) as HTMLElement | undefined;
+        if (boardEl) {
+            setDragHoveredBoardId(boardEl.dataset.boardId || null);
+        } else {
+            setDragHoveredBoardId(null);
+        }
+    }
+  };
+
+  const handleBoardPointerUp = (e: React.PointerEvent) => {
+    if (isDraggingBoardRef.current) {
+      if (dragHoveredBoardId) {
+        setCurrentBoardId(dragHoveredBoardId as any);
+        setIsBoardMenuOpen(false);
+      }
+    }
+    
+    dragStartRef.current = null;
+    isDraggingBoardRef.current = false;
+    setDragHoveredBoardId(null);
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+  };
+
+  const handleBoardClick = (e: React.MouseEvent) => {
+    if (isDraggingBoardRef.current) return;
+    if (menuWasOpenOnDown.current) {
+      setIsBoardMenuOpen(false);
+    }
+  };
+
   const editingTask = useMemo(() => tasks.find(t => t.id === editingTaskId) || null, [tasks, editingTaskId]);
   
   return (
     <div className="w-screen h-screen relative bg-[#f1f5f9] dark:bg-[#020617] overflow-hidden select-none font-sans text-slate-900 dark:text-slate-200 transition-colors duration-500">
       <Sidebar 
+        isOpen={isSidebarOpen}
+        setIsOpen={setIsSidebarOpen}
         boards={boards}
         currentBoardId={currentBoardId}
         onSelectBoard={(id) => {
@@ -225,49 +301,65 @@ const App: React.FC = () => {
         <>
             <div className="absolute top-6 right-6 z-40 animate-in slide-in-from-top-10 fade-in duration-500">
                 <button 
-                    onClick={() => setIsListViewOpen(true)}
+                    onClick={() => {
+                        setIsListViewOpen(true);
+                        setIsSidebarOpen(false); 
+                    }}
                     className={FAB_BASE_CLASS}
                     title="List View"
+                    aria-label="Open list view"
                 >
                     <LayoutList size={22} />
                 </button>
             </div>
 
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
+            <div className="absolute bottom-[max(2.5rem,calc(env(safe-area-inset-bottom))+1.5rem))] left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
                  <div className="relative">
                      <div 
-                        className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 bg-white/60 dark:bg-slate-900/60 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/50 dark:border-white/10 overflow-hidden transition-all duration-300 origin-bottom
-                        ${isBoardMenuOpen ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-90 translate-y-4 pointer-events-none'}`}
+                        ref={boardMenuRef}
+                        role="menu"
+                        aria-label="Select board"
+                        className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 rounded-2xl overflow-hidden transition-all duration-300 origin-bottom pointer-events-none ${GLASS_PANEL_CLASS}
+                        ${isBoardMenuOpen ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-90 translate-y-4'}`}
                      >
                         <div className="p-1.5 flex flex-col gap-0.5">
                             {boards.map(b => (
                                 <button
                                     key={b.id}
-                                    onClick={() => { setCurrentBoardId(b.id); setIsBoardMenuOpen(false); }}
-                                    className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors
-                                    ${currentBoardId === b.id 
-                                        ? 'bg-white/50 dark:bg-white/10 text-slate-900 dark:text-white' 
-                                        : 'text-slate-600 dark:text-white/60 hover:bg-white/30 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'}`}
+                                    data-board-id={b.id}
+                                    role="menuitem"
+                                    onClick={(e) => { 
+                                        e.stopPropagation();
+                                        setCurrentBoardId(b.id); 
+                                        setIsBoardMenuOpen(false); 
+                                    }}
+                                    className={`${MENU_ITEM_CLASS} ${(currentBoardId === b.id || dragHoveredBoardId === b.id) ? MENU_ITEM_ACTIVE_CLASS : MENU_ITEM_INACTIVE_CLASS}`}
                                 >
                                     {b.name}
                                 </button>
                             ))}
                             <div className="h-px bg-slate-200 dark:bg-white/10 my-1 mx-2" />
                             <button
-                                onClick={() => { setCurrentBoardId('ALL'); setIsBoardMenuOpen(false); }}
-                                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors
-                                ${currentBoardId === 'ALL' 
-                                    ? 'bg-white/50 dark:bg-white/10 text-slate-900 dark:text-white' 
-                                    : 'text-slate-600 dark:text-white/60 hover:bg-white/30 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'}`}
+                                data-board-id="ALL"
+                                role="menuitem"
+                                onClick={(e) => { 
+                                    e.stopPropagation();
+                                    setCurrentBoardId('ALL'); 
+                                    setIsBoardMenuOpen(false); 
+                                }}
+                                className={`${MENU_ITEM_CLASS} ${(currentBoardId === 'ALL' || dragHoveredBoardId === 'ALL') ? MENU_ITEM_ACTIVE_CLASS : MENU_ITEM_INACTIVE_CLASS}`}
                             >
                                 All Tasks
                             </button>
                             <button
-                                onClick={() => { setCurrentBoardId('COMPLETED'); setIsBoardMenuOpen(false); }}
-                                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors
-                                ${currentBoardId === 'COMPLETED' 
-                                    ? 'bg-white/50 dark:bg-white/10 text-slate-900 dark:text-white' 
-                                    : 'text-slate-600 dark:text-white/60 hover:bg-white/30 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'}`}
+                                data-board-id="COMPLETED"
+                                role="menuitem"
+                                onClick={(e) => { 
+                                    e.stopPropagation();
+                                    setCurrentBoardId('COMPLETED'); 
+                                    setIsBoardMenuOpen(false); 
+                                }}
+                                className={`${MENU_ITEM_CLASS} ${(currentBoardId === 'COMPLETED' || dragHoveredBoardId === 'COMPLETED') ? MENU_ITEM_ACTIVE_CLASS : MENU_ITEM_INACTIVE_CLASS}`}
                             >
                                 Completed
                             </button>
@@ -275,11 +367,14 @@ const App: React.FC = () => {
                      </div>
 
                      <button 
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setIsBoardMenuOpen(!isBoardMenuOpen);
-                        }}
-                        className={`px-6 py-2.5 rounded-full backdrop-blur-xl border shadow-lg flex items-center justify-center gap-2 min-w-[140px] transition-all hover:scale-105 active:scale-95
+                        ref={boardButtonRef}
+                        onPointerDown={handleBoardPointerDown}
+                        onPointerMove={handleBoardPointerMove}
+                        onPointerUp={handleBoardPointerUp}
+                        onClick={handleBoardClick}
+                        aria-haspopup="menu"
+                        aria-expanded={isBoardMenuOpen}
+                        className={`px-6 py-2.5 rounded-full backdrop-blur-xl border shadow-lg flex items-center justify-center gap-2 min-w-[140px] transition-all hover:scale-105 active:scale-95 touch-none
                         ${isBoardMenuOpen 
                             ? 'bg-white/60 dark:bg-slate-800/60 border-white/60 dark:border-white/20' 
                             : 'bg-white/30 dark:bg-slate-900/40 border-white/40 dark:border-white/10 hover:bg-white/50 dark:hover:bg-slate-900/60'}`}
@@ -287,7 +382,6 @@ const App: React.FC = () => {
                         <span className="text-sm font-bold text-slate-800 dark:text-white leading-none whitespace-nowrap shadow-sm">
                             {getCurrentBoardName()}
                         </span>
-                        <ChevronUp size={14} className={`text-slate-500 dark:text-white/50 transition-transform duration-300 ${isBoardMenuOpen ? 'rotate-180' : ''}`} />
                      </button>
                  </div>
             </div>

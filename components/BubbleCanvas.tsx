@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Task, Board } from '../types';
-import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, CENTER_RADIUS, calculateFontSize, POP_THRESHOLD_MS, FAB_BASE_CLASS } from '../constants';
+import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, CENTER_RADIUS, calculateFontSize, POP_THRESHOLD_MS, FAB_BASE_CLASS, TOOLTIP_BASE_CLASS } from '../constants';
 import { Maximize, Trash2, Trash, X, Ban } from 'lucide-react';
 import { audioService } from '../services/audioService';
 import { BubbleControls } from './BubbleControls';
@@ -45,8 +45,8 @@ const PHYSICS = {
 const MAX_ZOOM_IN = 4;
 const MIN_ZOOM_HARD_LIMIT = 0.02;
 const VIEWPORT_PADDING = 60;
-// Increased buffer to 350ms to prevent accidental swipes to trash
 const TRASH_SNAP_DURATION = 350; 
+const TOOLTIP_DELAY_MS = 7000;
 
 export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   tasks,
@@ -86,6 +86,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   const isUserInteracting = useRef(false);
   const zoomEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAutoScaling = useRef(true); 
+  const [autoScaleActiveUI, setAutoScaleActiveUI] = useState(true);
+  
   const prevTaskCount = useRef(tasks.length);
   const prevTasksHash = useRef('');
   const lastFitKRef = useRef(0);
@@ -97,6 +99,9 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   const [isHoveringTrash, setIsHoveringTrash] = useState(false);
   const [isTrashActivated, setIsTrashActivated] = useState(false); 
 
+  const [showResetTooltip, setShowResetTooltip] = useState(false);
+  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const hasResumedAudio = useRef(false);
   const ensureAudio = () => {
     if (!hasResumedAudio.current) {
@@ -105,10 +110,33 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     }
   };
 
-  // Re-enable auto scaling when completed tasks toggle
+  const handleResetView = useCallback(() => {
+    ensureAudio();
+    isAutoScaling.current = true; 
+    setAutoScaleActiveUI(true);
+    setShowResetTooltip(false);
+    if (simulationRef.current) simulationRef.current.alpha(0.3).restart();
+  }, []);
+
   useEffect(() => {
     isAutoScaling.current = true;
-  }, [showCompleted]);
+    setAutoScaleActiveUI(true);
+  }, [showCompleted, boards]);
+
+  useEffect(() => {
+    const isManuallyZoomed = isZoomedIn && !autoScaleActiveUI;
+    if (isManuallyZoomed) {
+      tooltipTimerRef.current = setTimeout(() => {
+        setShowResetTooltip(true);
+      }, TOOLTIP_DELAY_MS);
+    } else {
+      if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+      setShowResetTooltip(false);
+    }
+    return () => {
+      if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+    };
+  }, [isZoomedIn, autoScaleActiveUI]);
 
   const clearHoldTimer = useCallback(() => {
     if (holdTimerRef.current) {
@@ -164,6 +192,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   useEffect(() => {
       if (tasks.length > prevTaskCount.current) {
           isAutoScaling.current = true;
+          setAutoScaleActiveUI(true);
       }
       prevTaskCount.current = tasks.length;
   }, [tasks.length]);
@@ -190,6 +219,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
              }
              isUserInteracting.current = true;
              isAutoScaling.current = false; 
+             setAutoScaleActiveUI(false);
          }
       })
       .on('end', (event) => {
@@ -347,36 +377,30 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
               if (isOver !== isHoveringTrash) {
                   setIsHoveringTrash(isOver);
+                  const nodeEl = d3.select(`#node-${draggingNodeRef.current.id}`);
+                  const popRing = nodeEl.select('.pop-ring');
+                  const shakeEl = nodeEl.select('.shake-group');
+                  const d = draggingNodeRef.current;
+                  
                   if (isOver) {
                        if(navigator.vibrate) navigator.vibrate(20);
+                       shakeEl.classed('harsh-shake', true);
+                       popRing.interrupt()
+                           .style('opacity', 1)
+                           .attr('stroke-dashoffset', 2 * Math.PI * (d.r + 3))
+                           .transition()
+                           .duration(TRASH_SNAP_DURATION)
+                           .ease(d3.easeLinear)
+                           .attr('stroke-dashoffset', 0);
                   } else {
                        if(navigator.vibrate) navigator.vibrate(10);
+                       shakeEl.classed('harsh-shake', false);
+                       popRing.interrupt()
+                           .transition()
+                           .duration(200)
+                           .attr('stroke-dashoffset', 2 * Math.PI * (d.r + 3))
+                           .on('end', function() { d3.select(this).style('opacity', 0); });
                   }
-              }
-              
-              const nodeEl = d3.select(`#node-${draggingNodeRef.current.id}`);
-              const mainBubble = nodeEl.select('.main-bubble');
-              const innerScale = nodeEl.select('.inner-scale');
-              
-              if (isOver) {
-                   innerScale.transition().duration(250).ease(d3.easeCubicOut).attr('transform', 'scale(0.5)'); 
-                   nodeEl.classed('deleting-node', true);
-                   mainBubble.attr('fill', '#ef4444'); 
-                   mainBubble.style('filter', 'drop-shadow(0px 0px 15px rgba(239,68,68,0.6))');
-                   nodeEl.select('.bubble-text').style('opacity', 0);
-              } else {
-                   innerScale.transition().duration(250).ease(d3.easeElasticOut).attr('transform', 'scale(1)');
-                   nodeEl.classed('deleting-node', false);
-                   const originalColor = draggingNodeRef.current.originalTask.color;
-                   const isCompleted = draggingNodeRef.current.originalTask.completed;
-                   if (isCompleted) {
-                       mainBubble.attr('fill', theme === 'dark' ? '#1e293b' : '#cbd5e1');
-                   } else {
-                       mainBubble.attr('fill', `url(#grad-${originalColor.replace('#', '')})`);
-                   }
-                   
-                   mainBubble.style('filter', theme === 'dark' ? 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))' : 'drop-shadow(0px 4px 16px rgba(148, 163, 184, 0.4))');
-                   nodeEl.select('.bubble-text').style('opacity', isCompleted ? 0.6 : 1);
               }
           }
 
@@ -400,10 +424,11 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
       if (draggingNodeRef.current) {
           const d = draggingNodeRef.current;
-          
+          const nodeEl = d3.select(`#node-${d.id}`);
+          nodeEl.select('.shake-group').classed('harsh-shake', false);
+
           if (isHoveringTrash && isTrashActivated) {
               handleProgrammaticPop(d.originalTask, undefined, true);
-              
               setIsHoveringTrash(false);
               setIsTrashActivated(false);
               draggingNodeRef.current = null;
@@ -412,6 +437,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
               d.fx = null; d.fy = null;
               try { (event.target as Element).releasePointerCapture(event.pointerId); } catch(e) {}
               return;
+          } else if (isHoveringTrash) {
+              nodeEl.select('.pop-ring').interrupt().transition().duration(200).attr('stroke-dashoffset', 2 * Math.PI * (d.r + 3)).style('opacity', 0);
           }
 
           if (!isDraggingRef.current && !didPopRef.current && activePointers.current.size === 0) {
@@ -470,7 +497,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       
       group.append('circle')
           .attr('cx', x).attr('cy', y).attr('r', radius)
-          .attr('fill', 'none').attr('stroke', theme === 'dark' ? 'white' : '#64748b').attr('stroke-width', 3)
+          .attr('fill', 'none').attr('stroke', '#ef4444').attr('stroke-width', 3)
           .style('opacity', 0.6)
           .transition().duration(500).ease(d3.easeExpOut)
           .attr('r', radius * 2).style('opacity', 0).attr('stroke-width', 0).remove();
@@ -509,7 +536,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       
       if (isTrashPop && trashBtnRef.current && svgRef.current) {
           audioService.playPop(); 
-          // Show particles at the current position before it implodes
           createExplosion(x, y, task.color, task.size);
           
           const trashRect = trashBtnRef.current.getBoundingClientRect();
@@ -562,15 +588,11 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     const width = dimensions.width;
     const height = dimensions.height;
     const visibleTasks = showCompleted ? tasks : tasks.filter(t => !t.completed);
-    
     const simpleHash = visibleTasks.map(t => t.id + t.completed).join('|');
     const isRealDataChange = simpleHash !== prevTasksHash.current;
     prevTasksHash.current = simpleHash;
-
     const currentNodes = simulationRef.current?.nodes() || [];
-    const oldNodesMap = new Map<string, SimulationNode>(
-      currentNodes.map(n => [n.id, n] as [string, SimulationNode])
-    );
+    const oldNodesMap = new Map<string, SimulationNode>(currentNodes.map(n => [n.id, n] as [string, SimulationNode]));
 
     if (draggingNodeRef.current && !visibleTasks.find(t => t.id === draggingNodeRef.current?.id)) {
         draggingNodeRef.current = null;
@@ -588,32 +610,22 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           const spawn = getOffScreenPos(width, height);
           startX = spawn.x; startY = spawn.y;
       }
-      return {
-        id: task.id, r: task.size, originalTask: task,
-        x: startX, y: startY,
-        vx: existing ? existing.vx : 0, vy: existing ? existing.vy : 0,
-      };
+      return { id: task.id, r: task.size, originalTask: task, x: startX, y: startY, vx: existing ? existing.vx : 0, vy: existing ? existing.vy : 0 };
     });
 
-    const centerNode: SimulationNode = {
-      id: 'CENTER_BTN', r: CENTER_RADIUS, originalTask: {} as Task, 
-      isCenter: true, fx: width / 2, fy: height / 2, x: width/2, y: height/2
-    };
+    const centerNode: SimulationNode = { id: 'CENTER_BTN', r: CENTER_RADIUS, originalTask: {} as Task, isCenter: true, fx: width / 2, fy: height / 2, x: width/2, y: height/2 };
     if(!nodes.find(n => n.id === 'CENTER_BTN')) nodes.push(centerNode);
 
     if (!simulationRef.current) {
-      simulationRef.current = d3.forceSimulation<SimulationNode>(nodes)
-        .alphaMin(0.0001).alphaDecay(0.02); 
+      simulationRef.current = d3.forceSimulation<SimulationNode>(nodes).alphaMin(0.0001).alphaDecay(0.02); 
     } else {
       simulationRef.current.nodes(nodes);
       simulationRef.current.alpha(isRealDataChange ? 0.8 : 0.3).restart();
     }
     const simulation = simulationRef.current;
     const svg = d3.select(svgRef.current);
-    
     let defs = svg.select<SVGDefsElement>('defs');
     if (defs.empty()) defs = svg.append('defs');
-    
     defs.select('#center-glass-gradient').remove();
     defs.select('#center-glass-gradient-hover').remove();
     defs.select('#center-glass-stroke').remove();
@@ -657,190 +669,32 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
     const svgContent = svg.select('.canvas-content');
     const nodeSelection = svgContent.selectAll<SVGGElement, SimulationNode>('.node').data(nodes, d => d.id);
-
-    nodeSelection.exit().interrupt()
-       .transition().duration(600)
-       .style('opacity', 0)
-       .attr('transform', (d: any) => `translate(${d.x},${d.y}) scale(0.1)`)
-       .remove();
-
-    const enterGroup = nodeSelection.enter().append('g')
-       .attr('class', d => `node cursor-pointer group ${d.isCenter ? 'center-node' : ''}`)
-       .attr('id', d => `node-${d.id}`);
-    
+    nodeSelection.exit().interrupt().transition().duration(600).style('opacity', 0).attr('transform', (d: any) => `translate(${d.x},${d.y}) scale(0.1)`).remove();
+    const enterGroup = nodeSelection.enter().append('g').attr('class', d => `node cursor-pointer group ${d.isCenter ? 'center-node' : ''}`).attr('id', d => `node-${d.id}`);
     const inner = enterGroup.append('g').attr('class', 'inner-scale transition-transform duration-75');
     const shaker = inner.append('g').attr('class', 'shake-group'); 
-
-    shaker.append('circle').attr('class', 'pop-ring').attr('fill', 'none').attr('stroke', theme === 'dark' ? '#ffffff' : '#64748b').attr('stroke-width', 4).attr('opacity', 0).style('pointer-events', 'none')
-        .attr('transform', 'rotate(-90)');
-
-    shaker.append('circle')
-        .attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`)
-        .attr('stroke-width', 0);
-
-    shaker.append('g').attr('class', 'text-content pointer-events-none')
-         .append('foreignObject').append('xhtml:div')
-         .attr('class', 'w-full h-full flex flex-col items-center justify-center text-center overflow-hidden bubble-text-container')
-         .html(d => `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1;"></div>`);
-
-    inner.filter(d => !!d.isCenter).append('foreignObject').attr('class', 'center-btn-container pointer-events-none') 
-       .append('xhtml:div').attr('class', 'w-full h-full flex items-center justify-center text-white center-icon').html('');
-
+    shaker.append('circle').attr('class', 'pop-ring').attr('fill', 'none').attr('stroke', '#ef4444').attr('stroke-width', 6).attr('opacity', 0).style('pointer-events', 'none').attr('transform', 'rotate(-90)');
+    shaker.append('circle').attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`).attr('stroke-width', 0);
+    shaker.append('g').attr('class', 'text-content pointer-events-none').append('foreignObject').append('xhtml:div').attr('class', 'w-full h-full flex flex-col items-center justify-center text-center overflow-hidden bubble-text-container').html(d => `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1;"></div>`);
+    inner.filter(d => !!d.isCenter).append('foreignObject').attr('class', 'center-btn-container pointer-events-none').append('xhtml:div').attr('class', 'w-full h-full flex items-center justify-center text-white center-icon').html('');
     const allNodes = enterGroup.merge(nodeSelection);
     allNodes.filter(d => !!d.isCenter).raise();
-    
-    allNodes.select('.inner-scale')
-        .interrupt()
-        .style('opacity', d => d.id === selectedTaskId ? 0 : 1)
-        .attr('transform', 'scale(1)');
-
+    allNodes.select('.inner-scale').interrupt().style('opacity', d => d.id === selectedTaskId ? 0 : 1).attr('transform', 'scale(1)');
     const isMobile = dimensions.width < 768;
-    allNodes.filter(d => !!d.isCenter).select('.center-btn-container')
-       .attr('width', isMobile ? 80 : 48).attr('height', isMobile ? 80 : 48).attr('x', isMobile ? -40 : -24).attr('y', isMobile ? -40 : -24);
-    allNodes.filter(d => !!d.isCenter).select('.center-icon')
-       .style('color', theme === 'dark' ? 'white' : '#475569')
-       .html(`<div style="font-family: inherit; font-weight: 200; font-size: ${isMobile ? 56 : 42}px; line-height: 1; margin-top: -4px;">+</div>`);
-
-    allNodes.select('.main-bubble')
-        .attr('r', d => d.r)
-        .attr('fill', d => {
-            if (d.isCenter) return 'url(#center-glass-gradient)'; 
-            if (d.originalTask.completed) return theme === 'dark' ? '#1e293b' : '#cbd5e1'; 
-            const color = d.originalTask.color;
-            if (!color) return '#cccccc'; 
-            return `url(#grad-${color.replace('#', '')})`;
-        })
-        .attr('stroke', d => d.isCenter ? 'url(#center-glass-stroke)' : 'none')
-        .attr('stroke-width', d => d.isCenter ? null : 0) 
-        .style('filter', d => d.isCenter ? (theme === 'dark' ? 'drop-shadow(0px 8px 32px rgba(0,0,0,0.25))' : 'drop-shadow(0px 8px 24px rgba(0,0,0,0.15))') : (theme === 'dark' ? 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))' : 'drop-shadow(0px 4px 16px rgba(148, 163, 184, 0.4))'))
-        .attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`);
-
-    allNodes.select('.pop-ring')
-        .attr('r', d => d.r + 3).attr('stroke', theme === 'dark' ? '#ffffff' : '#64748b')
-        .attr('stroke-dasharray', d => 2 * Math.PI * (d.r + 3)).attr('stroke-dashoffset', d => 2 * Math.PI * (d.r + 3));
-
-    allNodes.select('.text-content foreignObject')
-        .attr('width', d => d.r * 1.38).attr('height', d => d.r * 1.38).attr('x', d => -d.r * 0.69).attr('y', d => -d.r * 0.69);
-
-    allNodes.select('.bubble-text-container')
-        .html(d => {
-            if (d.isCenter) return '';
-            const subtaskCount = d.originalTask.subtasks?.length || 0;
-            const completedSubtasks = d.originalTask.subtasks?.filter(s => s.completed).length || 0;
-            let html = `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1;">${d.originalTask.title}</div>`;
-            
-            if (d.originalTask.dueDate) {
-                const date = new Date(d.originalTask.dueDate);
-                const now = new Date();
-                const isOverdue = date < now && !d.originalTask.completed;
-                const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth();
-                const dateStr = isToday ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                const dateSize = Math.max(9, d.r * 0.18);
-                const pillColor = isOverdue ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.2)';
-                html += `<div style="margin-top: 6px;"><div style="display: inline-block; background: ${pillColor}; padding: 2px 8px; border-radius: 99px; font-size: ${dateSize}px; color: white; font-weight: 600; backdrop-filter: blur(4px);">${dateStr}</div></div>`;
-            }
-            if (subtaskCount > 0) html += `<div style="margin-top: 4px; font-size: ${d.r * 0.2}px; opacity: 0.8; font-weight: 600;">${completedSubtasks}/${subtaskCount}</div>`;
-            return html;
-        });
-
-    allNodes.select('.bubble-text')
-        .style('color', d => d.originalTask.completed ? (theme === 'dark' ? '#94a3b8' : '#64748b') : '#ffffff')
-        .style('font-size', d => {
-            let size = calculateFontSize(d.r, d.originalTask.title);
-            if (d.originalTask.dueDate || (d.originalTask.subtasks && d.originalTask.subtasks.length > 0)) size = size * 0.85;
-            return `${size}px`;
-        })
-        .style('opacity', d => d.originalTask.completed ? 0.6 : 1)
-        .style('text-decoration', d => d.originalTask.completed ? 'line-through' : 'none');
-
+    allNodes.filter(d => !!d.isCenter).select('.center-btn-container').attr('width', isMobile ? 80 : 48).attr('height', isMobile ? 80 : 48).attr('x', isMobile ? -40 : -24).attr('y', isMobile ? -40 : -24);
+    allNodes.filter(d => !!d.isCenter).select('.center-icon').style('color', theme === 'dark' ? 'white' : '#475569').html(`<div style="font-family: inherit; font-weight: 200; font-size: ${isMobile ? 56 : 42}px; line-height: 1; margin-top: -4px;">+</div>`);
+    allNodes.select('.main-bubble').attr('r', d => d.r).attr('fill', d => { if (d.isCenter) return 'url(#center-glass-gradient)'; if (d.originalTask.completed) return theme === 'dark' ? '#1e293b' : '#cbd5e1'; const color = d.originalTask.color; return color ? `url(#grad-${color.replace('#', '')})` : '#cccccc'; }).attr('stroke', d => d.isCenter ? 'url(#center-glass-stroke)' : 'none').attr('stroke-width', d => d.isCenter ? null : 0).style('filter', d => d.isCenter ? (theme === 'dark' ? 'drop-shadow(0px 8px 32px rgba(0,0,0,0.25))' : 'drop-shadow(0px 8px 24px rgba(0,0,0,0.15))') : (theme === 'dark' ? 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))' : 'drop-shadow(0px 4px 16px rgba(148, 163, 184, 0.4))')).attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`);
+    allNodes.select('.pop-ring').attr('r', d => d.r + 3).attr('stroke', '#ef4444').attr('stroke-dasharray', d => 2 * Math.PI * (d.r + 3)).attr('stroke-dashoffset', d => 2 * Math.PI * (d.r + 3));
+    allNodes.select('.text-content foreignObject').attr('width', d => d.r * 1.38).attr('height', d => d.r * 1.38).attr('x', d => -d.r * 0.69).attr('y', d => -d.r * 0.69);
+    allNodes.select('.bubble-text-container').html(d => { if (d.isCenter) return ''; const subtaskCount = d.originalTask.subtasks?.length || 0; const completedSubtasks = d.originalTask.subtasks?.filter(s => s.completed).length || 0; let html = `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1;">${d.originalTask.title}</div>`; if (d.originalTask.dueDate) { const date = new Date(d.originalTask.dueDate); const now = new Date(); const isOverdue = date < now && !d.originalTask.completed; const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth(); const dateStr = isToday ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); const dateSize = Math.max(9, d.r * 0.18); const pillColor = isOverdue ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.2)'; html += `<div style="margin-top: 6px;"><div style="display: inline-block; background: ${pillColor}; padding: 2px 8px; border-radius: 99px; font-size: ${dateSize}px; color: white; font-weight: 600; backdrop-filter: blur(4px);">${dateStr}</div></div>`; } if (subtaskCount > 0) html += `<div style="margin-top: 4px; font-size: ${d.r * 0.2}px; opacity: 0.8; font-weight: 600;">${completedSubtasks}/${subtaskCount}</div>`; return html; });
+    allNodes.select('.bubble-text').style('color', d => d.originalTask.completed ? (theme === 'dark' ? '#94a3b8' : '#64748b') : '#ffffff').style('font-size', d => { let size = calculateFontSize(d.r, d.originalTask.title); if (d.originalTask.dueDate || (d.originalTask.subtasks && d.originalTask.subtasks.length > 0)) size = size * 0.85; return `${size}px`; }).style('opacity', d => d.originalTask.completed ? 0.6 : 1).style('text-decoration', d => d.originalTask.completed ? 'line-through' : 'none');
     allNodes.style('pointer-events', d => d.id === selectedTaskId ? 'none' : 'all');
+    simulation.on('tick', () => { 
+        // Optimization: Skip DOM updates if simulation is nearly static and user is not active
+        if (simulation.alpha() < 0.005 && !isDraggingRef.current && !isUserInteracting.current && !isAutoScaling.current) return;
 
-    simulation.on('tick', () => {
-       const cx = dimensions.width / 2;
-       const cy = dimensions.height / 2;
-       const hardCenterBuffer = 10; 
-       
-       nodes.forEach(node => {
-          if (node.isCenter || node.id === selectedTaskId || node.x === undefined || node.y === undefined) return;
-          const dx = node.x - cx;
-          const dy = node.y - cy;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const minDistance = CENTER_RADIUS + node.r + hardCenterBuffer;
-
-          if (dist < minDistance) {
-              const angle = dist === 0 ? Math.random() * Math.PI * 2 : Math.atan2(dy, dx);
-              node.x = cx + Math.cos(angle) * minDistance;
-              node.y = cy + Math.sin(angle) * minDistance;
-              if (node.vx && node.vy) { node.vx *= 0.5; node.vy *= 0.5; }
-          }
-       });
-
-       allNodes.attr('transform', d => `translate(${d.x},${d.y})`);
-
-       if (zoomBehavior.current && svgRef.current) {
-           const simCx = dimensions.width / 2;
-           const simCy = dimensions.height / 2;
-           let maxDistX = 0;
-           let maxDistY = 0;
-           let hasNodes = false;
-
-           nodes.forEach(n => {
-              if (n.x === undefined || n.y === undefined) return;
-              hasNodes = true;
-              const r = n.r + 20; 
-              const dx = Math.abs(n.x - simCx) + r;
-              const dy = Math.abs(n.y - simCy) + r;
-              if (dx > maxDistX) maxDistX = dx;
-              if (dy > maxDistY) maxDistY = dy;
-           });
-
-           if (!hasNodes) {
-               maxDistX = 100;
-               maxDistY = 100;
-           }
-
-           const requiredW = (maxDistX + VIEWPORT_PADDING) * 2;
-           const requiredH = (maxDistY + VIEWPORT_PADDING) * 2;
-           const scaleX = dimensions.width / requiredW;
-           const scaleY = dimensions.height / requiredH;
-           let fitK = Math.min(scaleX, scaleY);
-           
-           fitK = Math.min(fitK, MAX_ZOOM_IN);
-           fitK = Math.max(fitK, MIN_ZOOM_HARD_LIMIT); 
-
-           minZoomRef.current = fitK;
-
-           if (!isUserInteracting.current && zoomBehavior.current) {
-                if (Math.abs(fitK - lastFitKRef.current) > 0.005) {
-                    lastFitKRef.current = fitK;
-                    zoomBehavior.current.scaleExtent([fitK, MAX_ZOOM_IN]);
-                    const worldVisibleW = dimensions.width / fitK;
-                    const worldVisibleH = dimensions.height / fitK;
-                    zoomBehavior.current.translateExtent([
-                       [simCx - worldVisibleW / 2, simCy - worldVisibleH / 2],
-                       [simCx + worldVisibleW / 2, simCy + worldVisibleH / 2]
-                    ]);
-                }
-           }
-
-           if (!isUserInteracting.current && !selectedTaskId) {
-               const t = d3.zoomTransform(svg.node() as Element);
-               const isAtOrBelowFloor = t.k < fitK * 1.01;
-               if (isAutoScaling.current || isAtOrBelowFloor) {
-                   const targetX = (dimensions.width / 2) - simCx * fitK;
-                   const targetY = (dimensions.height / 2) - simCy * fitK;
-                   const k = t.k + (fitK - t.k) * 0.1;
-                   const x = t.x + (targetX - t.x) * 0.1;
-                   const y = t.y + (targetY - t.y) * 0.1;
-
-                   if (Math.abs(k - t.k) > 0.0001 || Math.hypot(x - t.x, y - t.y) > 0.1) {
-                       zoomBehavior.current.transform(svg, d3.zoomIdentity.translate(x, y).scale(k));
-                   }
-               }
-           }
-       }
+        const cx = dimensions.width / 2; const cy = dimensions.height / 2; nodes.forEach(node => { if (node.isCenter || node.id === selectedTaskId || node.x === undefined || node.y === undefined) return; const dx = node.x - cx; const dy = node.y - cy; const dist = Math.sqrt(dx * dx + dy * dy); const minDistance = CENTER_RADIUS + node.r + 10; if (dist < minDistance) { const angle = dist === 0 ? Math.random() * Math.PI * 2 : Math.atan2(dy, dx); node.x = cx + Math.cos(angle) * minDistance; node.y = cy + Math.sin(angle) * minDistance; if (node.vx && node.vy) { node.vx *= 0.5; node.vy *= 0.5; } } }); allNodes.attr('transform', d => `translate(${d.x},${d.y})`); if (zoomBehavior.current && svgRef.current) { const simCx = dimensions.width / 2; const simCy = dimensions.height / 2; let maxDistX = 0; let maxDistY = 0; let hasNodes = false; nodes.forEach(n => { if (n.x === undefined || n.y === undefined) return; hasNodes = true; const r = n.r + 20; const dx = Math.abs(n.x - simCx) + r; const dy = Math.abs(n.y - simCy) + r; if (dx > maxDistX) maxDistX = dx; if (dy > maxDistY) maxDistY = dy; }); if (!hasNodes) { maxDistX = 100; maxDistY = 100; } const requiredW = (maxDistX + VIEWPORT_PADDING) * 2; const requiredH = (maxDistY + VIEWPORT_PADDING) * 2; const scaleX = dimensions.width / requiredW; const scaleY = dimensions.height / requiredH; let fitK = Math.min(scaleX, scaleY); fitK = Math.min(fitK, MAX_ZOOM_IN); fitK = Math.max(fitK, MIN_ZOOM_HARD_LIMIT); minZoomRef.current = fitK; if (!isUserInteracting.current && zoomBehavior.current) { if (Math.abs(fitK - lastFitKRef.current) > 0.005) { lastFitKRef.current = fitK; zoomBehavior.current.scaleExtent([fitK, MAX_ZOOM_IN]); const worldVisibleW = dimensions.width / fitK; const worldVisibleH = dimensions.height / fitK; zoomBehavior.current.translateExtent([[simCx - worldVisibleW / 2, simCy - worldVisibleH / 2], [simCx + worldVisibleW / 2, simCy + worldVisibleH / 2]]); } } if (!isUserInteracting.current && !selectedTaskId) { const t = d3.zoomTransform(svg.node() as Element); const isAtOrBelowFloor = t.k < fitK * 1.01; if (isAutoScaling.current || isAtOrBelowFloor) { const targetX = (dimensions.width / 2) - simCx * fitK; const targetY = (dimensions.height / 2) - simCy * fitK; const k = t.k + (fitK - t.k) * 0.1; const x = t.x + (targetX - t.x) * 0.1; const y = t.y + (targetY - t.y) * 0.1; if (Math.abs(k - t.k) > 0.0001 || Math.hypot(x - t.x, y - t.y) > 0.1) { zoomBehavior.current.transform(svg, d3.zoomIdentity.translate(x, y).scale(k)); } } } } 
     });
-
     return () => { simulation.stop(); };
   }, [tasks, showCompleted, selectedTaskId, dimensions, clearHoldTimer, theme]);
 
@@ -849,64 +703,27 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
      const sim = simulationRef.current;
      const width = dimensions.width;
      const height = dimensions.height;
-
      sim.force('x', d3.forceX(width / 2).strength(selectedTaskId ? 0.005 : PHYSICS.centerX));
      sim.force('y', d3.forceY(height / 2).strength(selectedTaskId ? 0.005 : PHYSICS.centerY));
-     
-     sim.force('charge', d3.forceManyBody().strength((d: any) => {
-        if (d.isCenter) return -600; 
-        if (d.id === selectedTaskId) return -40; 
-        const base = -100;
-        const sizeFactor = d.r ? d.r * 0.2 : 0; 
-        return base - sizeFactor;
-     }));
-     
-     sim.force('collide', d3.forceCollide<SimulationNode>()
-        .radius(d => {
-            if (d.id === selectedTaskId) return MIN_BUBBLE_SIZE + 10;
-            if (d.isCenter) return d.r + 25; 
-            return d.r + 6; 
-        }).strength(1).iterations(40));
-
+     sim.force('charge', d3.forceManyBody().strength((d: any) => { if (d.isCenter) return -600; if (d.id === selectedTaskId) return -40; return -100 - (d.r ? d.r * 0.2 : 0); }));
+     sim.force('collide', d3.forceCollide<SimulationNode>().radius(d => { if (d.id === selectedTaskId) return MIN_BUBBLE_SIZE + 10; if (d.isCenter) return d.r + 25; return d.r + 6; }).strength(1).iterations(40));
      sim.velocityDecay(PHYSICS.vDecay);
      sim.alpha(0.8).restart();
   }, [dimensions, selectedTaskId]);
-
-  const handleResetView = useCallback(() => {
-    ensureAudio();
-    isAutoScaling.current = true; 
-    if (simulationRef.current) simulationRef.current.alpha(0.3).restart();
-  }, []);
 
   const selectedTask = activeTask || tasks.find(t => t.id === selectedTaskId);
   
   return (
     <div ref={wrapperRef} className="w-full h-full relative bg-slate-50 dark:bg-[#020617] overflow-hidden transition-colors duration-500" onPointerDown={ensureAudio}>
       <style>{`
-        @keyframes shake-charge {
-          0% { transform: translate(0, 0); }
-          25% { transform: translate(1.5px, 1.5px); }
-          50% { transform: translate(-1.5px, -2px); }
-          75% { transform: translate(-2px, 1.5px); }
-          100% { transform: translate(1.5px, -1.5px); }
-        }
-        .charging-shake {
-          animation: shake-charge 0.08s infinite linear;
-        }
-        .center-node .main-bubble {
-            stroke-width: 1.2px; transition: all 0.3s ease;
-        }
-        .center-node:hover .main-bubble {
-            fill: url(#center-glass-gradient-hover) !important;
-            stroke: ${theme === 'dark' ? 'white' : '#94a3b8'} !important;
-            stroke-width: 1.5px !important;
-        }
-        .center-node .center-icon {
-            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        .center-node:hover .center-icon {
-            transform: scale(1.1);
-        }
+        @keyframes shake-charge { 0% { transform: translate(0, 0); } 25% { transform: translate(1.5px, 1.5px); } 50% { transform: translate(-1.5px, -2px); } 75% { transform: translate(-2px, 1.5px); } 100% { transform: translate(1.5px, -1.5px); } }
+        @keyframes harsh-shake { 0% { transform: translate(0, 0); } 15% { transform: translate(6px, -6px); } 30% { transform: translate(-6px, 4px); } 45% { transform: translate(5px, 5px); } 60% { transform: translate(-5px, -5px); } 75% { transform: translate(4px, -3px); } 100% { transform: translate(0, 0); } }
+        .charging-shake { animation: shake-charge 0.08s infinite linear; }
+        .harsh-shake { animation: harsh-shake 0.1s infinite linear; }
+        .center-node .main-bubble { stroke-width: 1.2px; transition: all 0.3s ease; }
+        .center-node:hover .main-bubble { fill: url(#center-glass-gradient-hover) !important; stroke: ${theme === 'dark' ? 'white' : '#94a3b8'} !important; stroke-width: 1.5px !important; }
+        .center-node .center-icon { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .center-node:hover .center-icon { transform: scale(1.1); }
       `}</style>
       
       <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
@@ -915,89 +732,52 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
          <div className={`absolute bottom-[-20%] right-[10%] w-[40%] h-[40%] rounded-full bg-[#818CF8] blur-[100px] transition-opacity duration-500 ${theme === 'dark' ? 'opacity-20' : 'opacity-40'}`} />
       </div>
 
-      <div className={`absolute inset-0 pointer-events-none z-20 transition-all duration-300 ease-out 
-          ${isHoveringTrash ? 'opacity-100' : 'opacity-0'}`}>
+      <div className={`absolute inset-0 pointer-events-none z-20 transition-all duration-300 ease-out ${isHoveringTrash ? 'opacity-100' : 'opacity-0'}`}>
           <div className="absolute inset-0 shadow-[inset_0_-100px_150px_-50px_rgba(239,68,68,0.2)] dark:shadow-[inset_0_-100px_150px_-50px_rgba(239,68,68,0.3)]" />
       </div>
 
-      <div className={`absolute top-12 left-1/2 -translate-x-1/2 z-40 pointer-events-none transition-all duration-300 cubic-bezier(0.175, 0.885, 0.32, 1.275)
-          ${isTrashActivated ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-8 scale-90'}`}>
+      <div className={`absolute top-12 left-1/2 -translate-x-1/2 z-40 pointer-events-none transition-all duration-300 cubic-bezier(0.175, 0.885, 0.32, 1.275) ${isTrashActivated ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-8 scale-90'}`}>
           <div className="flex items-center gap-2 px-5 py-2.5 bg-red-500 text-white rounded-full shadow-lg shadow-red-500/40 border border-white/20 backdrop-blur-md">
               <Trash className="w-5 h-5 animate-bounce" />
               <span className="font-bold tracking-wide text-sm">Release to Pop</span>
           </div>
       </div>
 
-      <svg 
-        ref={svgRef} 
-        className={`absolute inset-0 w-full h-full z-10 ${selectedTaskId ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}`}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        style={{ touchAction: 'none' }} 
-      >
+      <svg ref={svgRef} className={`absolute inset-0 w-full h-full z-10 ${selectedTaskId ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}`} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onPointerLeave={handlePointerUp} style={{ touchAction: 'none' }} >
         <g className="canvas-content" />
       </svg>
 
       {selectedTaskId && selectedTask && (
           <>
-            <div className={`absolute inset-0 z-20 animate-fade-in cursor-pointer ${theme === 'dark' ? 'bg-black/40 backdrop-blur-sm' : 'bg-slate-200/40 backdrop-blur-sm'}`} 
-                onClick={() => onEditTask(null as any)} />
+            <div className={`absolute inset-0 z-20 animate-fade-in cursor-pointer ${theme === 'dark' ? 'bg-black/40 backdrop-blur-sm' : 'bg-slate-200/40 backdrop-blur-sm'}`} onClick={() => onEditTask(null as any)} />
             <div className="absolute inset-0 z-30 pointer-events-none">
-                 <BubbleControls 
-                    task={selectedTask} boards={boards} startPos={editStartPos}
-                    onUpdate={(t) => onEditTask(t)} onDelete={onDeleteTask} onClose={() => onEditTask(null as any)}
-                    onPop={(coords) => handleProgrammaticPop(selectedTask, coords)}
-                 />
+                 <BubbleControls task={selectedTask} boards={boards} startPos={editStartPos} onUpdate={(t) => onEditTask(t)} onDelete={onDeleteTask} onClose={() => onEditTask(null as any)} onPop={(coords) => handleProgrammaticPop(selectedTask, coords)} />
             </div>
           </>
       )}
 
       {!selectedTaskId && (
           <>
-            <div className="absolute bottom-8 left-8 z-30">
+            <div className="absolute bottom-[max(2rem,env(safe-area-inset-bottom))] left-8 z-30">
                 <div className="relative group">
                     <div className={`absolute inset-0 rounded-full blur-xl transition-all duration-500 pointer-events-none ${isHoveringTrash ? 'bg-red-500/40 scale-150' : 'bg-transparent scale-100'}`} />
-
-                    <button 
-                        ref={trashBtnRef}
-                        onClick={onToggleShowCompleted} 
-                        className={`${FAB_BASE_CLASS} relative z-10 transition-all duration-300
-                            ${isDragging 
-                                ? 'bg-red-500/90 border-red-500/50 text-white shadow-xl shadow-red-500/20' 
-                                : (isShowingCompleted ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') : '')
-                            }
-                            ${isTrashActivated ? 'scale-[1.35] rotate-12 bg-red-600 border-red-400' : ''}
-                            ${isHoveringTrash && !isTrashActivated ? 'scale-125' : ''}
-                        `}
-                    >
+                    <button ref={trashBtnRef} onClick={onToggleShowCompleted} className={`${FAB_BASE_CLASS} relative z-10 transition-all duration-300 ${isDragging ? 'bg-red-500/90 border-red-500/50 text-white shadow-xl shadow-red-500/20' : (isShowingCompleted ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') : '')} ${isTrashActivated ? 'scale-[1.35] rotate-12 bg-red-600 border-red-400' : ''} ${isHoveringTrash && !isTrashActivated ? 'scale-125' : ''}`}>
                     <div className={`transition-transform duration-300 relative ${isShowingCompleted && !isHoveringTrash ? 'rotate-[135deg]' : 'rotate-0'}`}>
-                            {isHoveringTrash
-                            ? <Trash2 size={24} className={isTrashActivated ? 'animate-bounce' : ''} strokeWidth={isTrashActivated ? 2.5 : 2} /> 
-                            : <Trash size={22} />
-                            }
-                            
+                            {isHoveringTrash ? <Trash2 size={24} className={isTrashActivated ? 'animate-bounce' : ''} strokeWidth={isTrashActivated ? 2.5 : 2} /> : <Trash size={22} />}
                             {isShowingCompleted && !isHoveringTrash && (
                                 <div className="absolute -top-3 left-0 w-full h-full flex justify-center gap-1 pointer-events-none">
-                                <div className="w-1 h-1 bg-current rounded-full opacity-80" />
-                                <div className="w-1.5 h-1.5 bg-current rounded-sm opacity-80 translate-y-1" />
-                                <div className="w-1 h-1 bg-current rounded-full opacity-80" />
+                                <div className="w-1 h-1 bg-current rounded-full opacity-80" /><div className="w-1.5 h-1.5 bg-current rounded-sm opacity-80 translate-y-1" /><div className="w-1 h-1 bg-current rounded-full opacity-80" />
                                 </div>
                             )}
                     </div>
                     </button>
                 </div>
             </div>
-            
-            <div className={`absolute bottom-8 right-8 z-30 flex flex-col items-center transition-all duration-300 ${isZoomedIn ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
-                <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-slate-800/90 dark:bg-white/90 text-white dark:text-slate-900 text-[10px] font-bold rounded-lg shadow-lg backdrop-blur-sm whitespace-nowrap pointer-events-none">
-                    Reset Zoom
+            <div className={`absolute bottom-[max(2rem,env(safe-area-inset-bottom))] right-8 z-30 flex flex-col items-center transition-all duration-300 ${(isZoomedIn && !autoScaleActiveUI) ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
+                <div className={`${TOOLTIP_BASE_CLASS} absolute bottom-full mb-3 left-1/2 -translate-x-1/2 pointer-events-none transition-all duration-500 ${showResetTooltip ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+                    Reset View
                 </div>
-                <button onClick={handleResetView} 
-                  className={FAB_BASE_CLASS}
-                  title="Reset View">
+                <button onClick={handleResetView} className={FAB_BASE_CLASS} title="Reset View">
                     <Maximize size={22} />
                 </button>
             </div>
