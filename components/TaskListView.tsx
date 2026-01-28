@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Task } from '../types';
@@ -110,10 +111,19 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
 
   const handlePointerDown = (e: React.PointerEvent, task: Task) => {
       if (task.completed) return;
-      const isButton = (e.target as HTMLElement).closest('button');
+      const target = e.target as HTMLElement;
+      const isButton = target.closest('button');
       if (isButton) return;
 
+      // On touch devices, only allow dragging via the grip handle to prevent scroll interference
+      if (e.pointerType === 'touch') {
+          const isHandle = target.closest('.drag-handle');
+          if (!isHandle) return;
+      }
+
       const row = e.currentTarget as HTMLElement;
+      row.setPointerCapture(e.pointerId); // Crucial: prevents browser from hijacking event stream (scrolling)
+      
       const rect = row.getBoundingClientRect();
       
       dragRef.current = { 
@@ -133,6 +143,7 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
 
       window.addEventListener('pointermove', onPointerMove);
       window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerUp);
   };
 
   const onPointerMove = useCallback((e: PointerEvent) => {
@@ -151,6 +162,7 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
       }
 
       if (dragRef.current.hasMoved) {
+          e.preventDefault(); // Prevent default touch actions while dragging
           setPointerPos({ x: e.clientX, y: e.clientY });
           dragRef.current.lastPointerY = e.clientY;
           if (listRef.current) {
@@ -210,6 +222,7 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
       cancelAnimationFrame(autoScrollFrame.current);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
       
       if (!dragRef.current.active) return;
       
@@ -256,6 +269,11 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
             </div>
             <div className="flex items-center gap-3 pl-2 shrink-0">
                 <div className="rounded-full border border-slate-50 dark:border-white/5" style={{ width: `${dotSize}px`, height: `${dotSize}px`, background: task.color, opacity: task.completed ? 0.3 : 0.9, boxShadow: task.completed ? 'none' : `0 0 12px ${task.color}50` }} />
+                {!task.completed && (
+                  <div className="drag-handle text-slate-300 dark:text-slate-600 cursor-grab active:cursor-grabbing p-2 -mr-2 touch-none">
+                    <GripVertical size={20} />
+                  </div>
+                )}
             </div>
         </div>
     );
@@ -271,7 +289,7 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
           <button onClick={onClose} className="p-2 -ml-2 rounded-full transition-colors active:scale-90 text-slate-400 hover:text-slate-800"><ArrowLeft size={20} /></button>
           <div className="flex-1">
              <h2 className="text-xl font-bold text-slate-900 dark:text-white/90">Prioritize Tasks</h2>
-             <p className="text-[10px] text-slate-500 dark:text-white/40 font-medium">Drag anywhere on a row to reorder</p>
+             <p className="text-[10px] text-slate-500 dark:text-white/40 font-medium">Drag the handle to reorder</p>
           </div>
           <span className="px-2 py-0.5 rounded-full text-xs font-bold border bg-white/20 text-slate-500">{activeTasks.length}</span>
         </div>
