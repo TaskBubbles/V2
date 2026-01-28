@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { BubbleCanvas } from './components/BubbleCanvas';
@@ -243,7 +242,7 @@ const App: React.FC = () => {
   const editingTask = useMemo(() => tasks.find(t => t.id === editingTaskId) || null, [tasks, editingTaskId]);
   
   return (
-    <div className="w-screen h-screen relative bg-[#f1f5f9] dark:bg-[#020617] overflow-hidden select-none font-sans text-slate-900 dark:text-slate-200 transition-colors duration-500">
+    <div className="w-screen h-[100dvh] relative bg-[#f1f5f9] dark:bg-[#020617] overflow-hidden select-none font-sans text-slate-900 dark:text-slate-200 transition-colors duration-500">
       <Sidebar 
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
@@ -284,6 +283,7 @@ const App: React.FC = () => {
         onToggleShowCompleted={() => setShowCompleted(!showCompleted)}
         isShowingCompleted={showCompleted}
         theme={theme}
+        currentBoardId={currentBoardId}
       />
 
       <TaskListView 
@@ -313,7 +313,7 @@ const App: React.FC = () => {
                 </button>
             </div>
 
-            <div className="absolute bottom-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))] left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
+            <div className="absolute bottom-[max(3rem,calc(env(safe-area-inset-bottom)+2rem))] left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
                  <div className="relative">
                      <div 
                         ref={boardMenuRef}

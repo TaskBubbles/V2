@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Task, Board } from '../types';
@@ -20,6 +19,7 @@ interface BubbleCanvasProps {
   onToggleShowCompleted: () => void;
   isShowingCompleted: boolean;
   theme?: 'dark' | 'light';
+  currentBoardId?: string | 'ALL' | 'COMPLETED';
 }
 
 interface SimulationNode extends d3.SimulationNodeDatum {
@@ -61,6 +61,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   onToggleShowCompleted,
   isShowingCompleted,
   theme = 'dark',
+  currentBoardId = '1',
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -109,6 +110,9 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       hasResumedAudio.current = true;
     }
   };
+
+  const hasCompletedTasks = tasks.some(t => t.completed);
+  const canToggleTrash = hasCompletedTasks;
 
   const handleResetView = useCallback(() => {
     ensureAudio();
@@ -712,6 +716,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   }, [dimensions, selectedTaskId]);
 
   const selectedTask = activeTask || tasks.find(t => t.id === selectedTaskId);
+  const showTrashIcon = !selectedTaskId && currentBoardId !== 'COMPLETED';
   
   return (
     <div ref={wrapperRef} className="w-full h-full relative bg-slate-50 dark:bg-[#020617] overflow-hidden transition-colors duration-500" onPointerDown={ensureAudio}>
@@ -756,12 +761,17 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           </>
       )}
 
-      {!selectedTaskId && (
+      {showTrashIcon && (
           <>
-            <div className="absolute bottom-[max(2rem,env(safe-area-inset-bottom))] left-8 z-30">
+            <div className="absolute bottom-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))] left-8 z-30">
                 <div className="relative group">
                     <div className={`absolute inset-0 rounded-full blur-xl transition-all duration-500 pointer-events-none ${isHoveringTrash ? 'bg-red-500/40 scale-150' : 'bg-transparent scale-100'}`} />
-                    <button ref={trashBtnRef} onClick={onToggleShowCompleted} className={`${FAB_BASE_CLASS} relative z-10 transition-all duration-300 ${isDragging ? 'bg-red-500/90 border-red-500/50 text-white shadow-xl shadow-red-500/20' : (isShowingCompleted ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') : '')} ${isTrashActivated ? 'scale-[1.35] rotate-12 bg-red-600 border-red-400' : ''} ${isHoveringTrash && !isTrashActivated ? 'scale-125' : ''}`}>
+                    <button 
+                        ref={trashBtnRef} 
+                        onClick={() => canToggleTrash && onToggleShowCompleted()} 
+                        className={`${FAB_BASE_CLASS} relative z-10 transition-all duration-300 ${isDragging ? 'bg-red-500/90 border-red-500/50 text-white shadow-xl shadow-red-500/20' : (isShowingCompleted ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') : '')} ${isTrashActivated ? 'scale-[1.35] rotate-12 bg-red-600 border-red-400' : ''} ${isHoveringTrash && !isTrashActivated ? 'scale-125' : ''} ${!canToggleTrash && !isDragging ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}
+                        title={!canToggleTrash ? "No completed tasks on this board" : "Toggle completed tasks"}
+                    >
                     <div className={`transition-transform duration-300 relative ${isShowingCompleted && !isHoveringTrash ? 'rotate-[135deg]' : 'rotate-0'}`}>
                             {isHoveringTrash ? <Trash2 size={24} className={isTrashActivated ? 'animate-bounce' : ''} strokeWidth={isTrashActivated ? 2.5 : 2} /> : <Trash size={22} />}
                             {isShowingCompleted && !isHoveringTrash && (
@@ -773,7 +783,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
                     </button>
                 </div>
             </div>
-            <div className={`absolute bottom-[max(2rem,env(safe-area-inset-bottom))] right-8 z-30 flex flex-col items-center transition-all duration-300 ${(isZoomedIn && !autoScaleActiveUI) ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
+            <div className={`absolute bottom-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))] right-8 z-30 flex flex-col items-center transition-all duration-300 ${(isZoomedIn && !autoScaleActiveUI) ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
                 <div className={`${TOOLTIP_BASE_CLASS} absolute bottom-full mb-3 left-1/2 -translate-x-1/2 pointer-events-none transition-all duration-500 ${showResetTooltip ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
                     Reset View
                 </div>

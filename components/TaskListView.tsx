@@ -131,7 +131,7 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
       setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top });
       setPointerPos({ x: e.clientX, y: e.clientY });
 
-      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointermove', onPointerMove, { passive: false });
       window.addEventListener('pointerup', onPointerUp);
   };
 
@@ -151,6 +151,9 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
       }
 
       if (dragRef.current.hasMoved) {
+          // Critical for mobile dragging to prevent scroll
+          if (e.cancelable) e.preventDefault();
+          
           setPointerPos({ x: e.clientX, y: e.clientY });
           dragRef.current.lastPointerY = e.clientY;
           if (listRef.current) {
@@ -282,7 +285,7 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
                     key={task.id} 
                     data-task-id={task.id} 
                     onPointerDown={(e) => handlePointerDown(e, task)} 
-                    className={`task-row group cursor-grab active:cursor-grabbing transition-transform ${task.id === draggedTaskId && isDragging ? 'opacity-0 pointer-events-none' : 'opacity-100 hover:scale-[1.01]'}`} 
+                    className={`task-row group cursor-grab active:cursor-grabbing transition-transform touch-none ${task.id === draggedTaskId && isDragging ? 'opacity-0 pointer-events-none' : 'opacity-100 hover:scale-[1.01]'}`} 
                     onClick={() => { 
                         if(!isDragging) { 
                             onEditTask(task); 
