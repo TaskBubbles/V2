@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Menu, Plus, LayoutGrid, List, Trash2, LogOut, User as UserIcon, LogIn, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff } from 'lucide-react';
-import { Board, User } from '../types';
+import { Menu, Plus, LayoutGrid, List, Trash2, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff, AlertTriangle } from 'lucide-react';
+import { Board } from '../types';
 import { audioService } from '../services/audioService';
 import { notificationService } from '../services/notificationService';
 import { FAB_BASE_CLASS, GLASS_PANEL_CLASS } from '../constants';
@@ -13,9 +13,6 @@ interface SidebarProps {
   currentBoardId: string | 'ALL' | 'COMPLETED';
   onSelectBoard: (id: string | 'ALL' | 'COMPLETED') => void;
   onCreateBoard: (name: string) => void;
-  user?: User | null;
-  onLogout?: () => void;
-  onLogin?: () => void;
   isHidden?: boolean;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
@@ -33,7 +30,7 @@ const Switch = ({ checked, iconOn, iconOff, colorClass = "from-blue-500 to-blue-
     </div>
 );
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, currentBoardId, onSelectBoard, onCreateBoard, user, onLogout, onLogin, isHidden = false, theme, onToggleTheme }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, currentBoardId, onSelectBoard, onCreateBoard, isHidden = false, theme, onToggleTheme }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [newBoardName, setNewBoardName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -45,6 +42,31 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault(); if (newBoardName.trim()) { onCreateBoard(newBoardName); setNewBoardName(''); setIsCreating(false); }
+  };
+
+  const handleToggleNotifications = async () => {
+    const newState = !notificationsEnabled;
+    if (newState) {
+        // Turning on: Check permission
+        const granted = await notificationService.requestPermission();
+        if (!granted) {
+            alert('Notifications are blocked by your browser settings. Please enable them to receive task alerts.');
+            setNotificationsEnabled(false);
+            return;
+        }
+    }
+    setNotificationsEnabled(newState);
+  };
+
+  const handleDeleteData = () => {
+    if (window.confirm('Are you sure you want to delete all data? This cannot be undone.')) {
+      try {
+        localStorage.clear();
+        window.location.href = window.location.href; // Force hard reload
+      } catch (e) {
+        alert('Failed to delete data. Please try clearing your browser cache.');
+      }
+    }
   };
 
   return (
@@ -71,7 +93,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
           <div className="mb-6 px-1 flex items-center gap-3">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight drop-shadow-sm">Task Bubbles</h2>
           </div>
-          <div className="mb-6 pb-6 border-b border-slate-200 dark:border-white/10">{user ? (<div className="flex items-center gap-3 p-3 rounded-2xl shadow-sm backdrop-blur-sm bg-white/20 dark:bg-white/5 border border-white/30 dark:border-white/5">{user.avatarUrl ? (<img src={user.avatarUrl} alt={user.name} className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-white/10 shadow-sm" />) : (<div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-white/10 flex items-center justify-center text-slate-500 dark:text-white/70"><UserIcon size={20} /></div>)}<div className="flex-1 min-w-0"><h3 className="text-sm font-bold text-slate-900 dark:text-white truncate leading-tight">{user.name}</h3><p className="text-[10px] text-slate-500 dark:text-white/40 truncate font-medium">{user.email}</p></div><button onClick={onLogout} aria-label="Log Out" className="p-2 text-slate-400 dark:text-white/30 hover:text-red-500 dark:hover:text-red-400 hover:bg-white/40 dark:hover:bg-white/10 rounded-xl transition-all"><LogOut size={18} /></button></div>) : (<button onClick={onLogin} aria-label="Log in" className="w-full flex items-center gap-3 p-3 rounded-2xl shadow-sm transition-all text-left group backdrop-blur-sm bg-white/20 dark:bg-white/5 hover:bg-white/40 dark:hover:bg-white/10 border border-white/30 dark:border-white/5"><div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-white/10 flex items-center justify-center text-slate-500 dark:text-white/50 group-hover:text-slate-700 dark:group-hover:text-white"><LogIn size={20} /></div><div><h3 className="text-sm font-bold text-slate-900 dark:text-white">Log In</h3><p className="text-[10px] text-slate-500 dark:text-white/40">Sync your tasks</p></div></button>)}</div>
           <nav className="space-y-1.5 flex-1 overflow-y-auto no-scrollbar"><button onClick={() => { onSelectBoard('ALL'); setIsOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${currentBoardId === 'ALL' ? 'bg-white/40 dark:bg-white/10 text-slate-900 dark:text-white shadow-sm border-white/40 dark:border-white/10 backdrop-blur-md' : 'border-transparent text-slate-500 dark:text-white/60 hover:bg-white/20 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'}`}><LayoutGrid size={18} /><span className="font-medium text-sm">All Tasks</span></button><div className="pt-6 pb-2 px-4"><span className="text-[10px] font-bold text-slate-400 dark:text-white/30 uppercase tracking-widest">Task Boards</span></div>{boards.map((board) => (<button key={board.id} onClick={() => { onSelectBoard(board.id); setIsOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${currentBoardId === board.id ? 'bg-white/40 dark:bg-white/10 text-slate-900 dark:text-white shadow-sm border-white/40 dark:border-white/10 backdrop-blur-md' : 'border-transparent text-slate-500 dark:text-white/60 hover:bg-white/20 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'}`}><List size={18} /><span className="font-medium text-sm truncate">{board.name}</span></button>))}{isCreating ? (<form onSubmit={handleSubmit} className="px-1 py-2"><input aria-label="New board name" autoFocus type="text" placeholder="Board Name" value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} onBlur={() => !newBoardName && setIsCreating(false)} className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none transition-all bg-white/30 dark:bg-white/5 border border-white/40 dark:border-white/10 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/20 focus:border-slate-400 dark:focus:border-white/30" /></form>) : (<button onClick={() => setIsCreating(true)} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group mt-2 border border-transparent text-slate-400 dark:text-white/40 hover:text-slate-900 dark:hover:text-white hover:bg-white/20 dark:hover:bg-white/5 hover:border-white/30 dark:hover:border-white/10"><Plus size={18} className="group-hover:rotate-90 transition-transform" /><span className="font-medium text-sm">New Board</span></button>)}<div className="my-3 border-t border-slate-200 dark:border-white/10 mx-2" /><button onClick={() => { onSelectBoard('COMPLETED'); setIsOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${currentBoardId === 'COMPLETED' ? 'bg-white/40 dark:bg-white/10 text-slate-900 dark:text-white shadow-sm border-white/40 dark:border-white/10 backdrop-blur-md' : 'border-transparent text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-white/20 dark:hover:bg-white/5 hover:border-white/30 dark:hover:border-white/5'}`}><Trash2 size={18} /><span className="font-medium text-sm">Completed Tasks</span></button></nav>
           <div className="pt-4 border-t border-slate-200 dark:border-white/10 mt-2 space-y-1.5"><button onClick={() => { setIsSettingsOpen(true); setIsOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border border-transparent text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-white/20 dark:hover:bg-white/5 hover:border-white/30 dark:hover:border-white/5"><Settings size={18} /><span className="font-medium text-sm">Settings</span></button></div>
         </div>
@@ -89,8 +110,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
                 <div className="p-6 space-y-4">
                     <button onClick={onToggleTheme} className="w-full flex items-center justify-between p-3 rounded-2xl border transition-all duration-200 outline-none group bg-white/40 dark:bg-white/5 border-white/40 dark:border-white/5 hover:bg-white/60 dark:hover:bg-white/10 hover:border-white/60 dark:hover:border-white/20 active:scale-[0.98]"><div className="flex items-center gap-3 text-slate-700 dark:text-white/80"><div className="p-2 rounded-xl text-slate-500 dark:text-white/70 bg-white/50 dark:bg-white/10 group-hover:scale-110 transition-transform duration-300">{theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}</div><div className="flex flex-col items-start"><span className="font-bold text-sm">Dark Mode</span><span className="text-[10px] text-slate-400 dark:text-white/40 font-medium">Adjust appearance</span></div></div><Switch checked={theme === 'dark'} iconOn={<Moon size={14} className="text-indigo-600" />} iconOff={<Sun size={14} className="text-amber-500" />} colorClass="from-indigo-500 to-violet-600" /></button>
                     <button onClick={() => setSoundEnabled(!soundEnabled)} className="w-full flex items-center justify-between p-3 rounded-2xl border transition-all duration-200 outline-none group bg-white/40 dark:bg-white/5 border-white/40 dark:border-white/5 hover:bg-white/60 dark:hover:bg-white/10 hover:border-white/60 dark:hover:border-white/20 active:scale-[0.98]"><div className="flex items-center gap-3 text-slate-700 dark:text-white/80"><div className="p-2 rounded-xl text-slate-500 dark:text-white/70 bg-white/50 dark:bg-white/10 group-hover:scale-110 transition-transform duration-300">{soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}</div><div className="flex flex-col items-start"><span className="font-bold text-sm">Sound Effects</span><span className="text-[10px] text-slate-400 dark:text-white/40 font-medium">Bubbles go pop</span></div></div><Switch checked={soundEnabled} iconOn={<Volume2 size={14} className="text-blue-600" />} iconOff={<VolumeX size={14} className="text-slate-400" />} colorClass="from-blue-400 to-blue-600" /></button>
-                    <button onClick={() => setNotificationsEnabled(!notificationsEnabled)} className="w-full flex items-center justify-between p-3 rounded-2xl border transition-all duration-200 outline-none group bg-white/40 dark:bg-white/5 border-white/40 dark:border-white/5 hover:bg-white/60 dark:hover:bg-white/10 hover:border-white/60 dark:hover:border-white/20 active:scale-[0.98]"><div className="flex items-center gap-3 text-slate-700 dark:text-white/80"><div className="p-2 rounded-xl text-slate-500 dark:text-white/70 bg-white/50 dark:bg-white/10 group-hover:scale-110 transition-transform duration-300">{notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}</div><div className="flex flex-col items-start"><span className="font-bold text-sm">Notifications</span><span className="text-[10px] text-slate-400 dark:text-white/40 font-medium">Task reminders</span></div></div><Switch checked={notificationsEnabled} iconOn={<Bell size={14} className="text-emerald-600" />} iconOff={<BellOff size={14} className="text-slate-400" />} colorClass="from-emerald-400 to-emerald-600" /></button>
-                    <div className="pt-4 mt-4 border-t border-slate-200 dark:border-white/10"><p className="text-center text-[10px] font-bold tracking-widest text-slate-400 dark:text-white/20 uppercase">Task Bubbles v1.4.2</p></div>
+                    <button onClick={handleToggleNotifications} className="w-full flex items-center justify-between p-3 rounded-2xl border transition-all duration-200 outline-none group bg-white/40 dark:bg-white/5 border-white/40 dark:border-white/5 hover:bg-white/60 dark:hover:bg-white/10 hover:border-white/60 dark:hover:border-white/20 active:scale-[0.98]"><div className="flex items-center gap-3 text-slate-700 dark:text-white/80"><div className="p-2 rounded-xl text-slate-500 dark:text-white/70 bg-white/50 dark:bg-white/10 group-hover:scale-110 transition-transform duration-300">{notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}</div><div className="flex flex-col items-start"><span className="font-bold text-sm">Notifications</span><span className="text-[10px] text-slate-400 dark:text-white/40 font-medium">Task reminders</span></div></div><Switch checked={notificationsEnabled} iconOn={<Bell size={14} className="text-emerald-600" />} iconOff={<BellOff size={14} className="text-slate-400" />} colorClass="from-emerald-400 to-emerald-600" /></button>
+                    
+                    <button onClick={handleDeleteData} className="w-full flex items-center gap-3 p-3 rounded-2xl border transition-all duration-200 outline-none bg-red-500/10 border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 active:scale-[0.98] text-red-600 dark:text-red-400">
+                        <div className="p-2 rounded-xl bg-red-500/20"><AlertTriangle size={18} /></div>
+                        <div className="flex flex-col items-start"><span className="font-bold text-sm">Delete All Data</span><span className="text-[10px] opacity-80 font-medium">Clear local storage</span></div>
+                    </button>
+
+                    <div className="pt-4 mt-4 border-t border-slate-200 dark:border-white/10"><p className="text-center text-[10px] font-bold tracking-widest text-slate-400 dark:text-white/20 uppercase">Task Bubbles v1.4.3</p></div>
                 </div>
             </div>
         </div>

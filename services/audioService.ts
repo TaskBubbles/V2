@@ -92,6 +92,37 @@ class AudioService {
     osc.start(startTime);
     osc.stop(startTime + 0.05);
   }
+
+  playAlert() {
+    if (this.isMuted) return;
+    const ctx = this.getContext();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    // Gentle Double Beep
+    osc.type = 'sine';
+    const freq = 880; // A5
+    
+    // Beep 1
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.1, t + 0.05);
+    gain.gain.linearRampToValueAtTime(0, t + 0.2);
+    
+    // Beep 2
+    osc.frequency.setValueAtTime(freq, t + 0.25);
+    gain.gain.setValueAtTime(0, t + 0.25);
+    gain.gain.linearRampToValueAtTime(0.1, t + 0.3);
+    gain.gain.linearRampToValueAtTime(0, t + 0.5);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.6);
+  }
 }
 
 export const audioService = new AudioService();

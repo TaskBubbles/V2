@@ -1,4 +1,6 @@
+
 import { Task } from '../types';
+import { audioService } from './audioService';
 
 class NotificationService {
   private notifiedTaskIds: Set<string> = new Set();
@@ -18,15 +20,19 @@ class NotificationService {
 
   setEnabled(enabled: boolean) {
     this.enabled = enabled;
-    if (enabled) {
-        this.requestPermission();
-    }
   }
 
-  requestPermission() {
-    if ('Notification' in window && Notification.permission !== 'granted') {
-        Notification.requestPermission();
+  async requestPermission(): Promise<boolean> {
+    if (!('Notification' in window)) return false;
+    
+    if (Notification.permission === 'granted') return true;
+    
+    if (Notification.permission !== 'denied') {
+        const permission = await Notification.requestPermission();
+        return permission === 'granted';
     }
+    
+    return false;
   }
 
   async checkAndNotify(tasks: Task[]) {
@@ -72,11 +78,13 @@ class NotificationService {
         badge: './favicon.ico',
         tag: task.id, // Replace existing notification for same task
         silent: false,
-        data: { url: './' }
     };
 
     try {
-        // Fallback for standard web context
+        // Play sound inside the app context
+        audioService.playAlert();
+        
+        // Trigger browser notification
         const n = new Notification(title, options);
         n.onclick = () => {
             window.focus();

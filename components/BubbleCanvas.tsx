@@ -691,22 +691,88 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     const enterGroup = nodeSelection.enter().append('g').attr('class', d => `node cursor-pointer group ${d.isCenter ? 'center-node' : ''}`).attr('id', d => `node-${d.id}`);
     const inner = enterGroup.append('g').attr('class', 'inner-scale transition-transform duration-75');
     const shaker = inner.append('g').attr('class', 'shake-group'); 
+    
+    // Pop Ring
     shaker.append('circle').attr('class', 'pop-ring').attr('fill', 'none').attr('stroke', '#ef4444').attr('stroke-width', 6).attr('opacity', 0).style('pointer-events', 'none').attr('transform', 'rotate(-90)');
+    
+    // Main Bubble
     shaker.append('circle').attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`).attr('stroke-width', 0);
-    shaker.append('g').attr('class', 'text-content pointer-events-none').append('foreignObject').append('xhtml:div').attr('class', 'w-full h-full flex flex-col items-center justify-center text-center overflow-hidden bubble-text-container').html(d => `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1;"></div>`);
+    
+    // REMOVED: Circular Progress Rings
+
+    shaker.append('g').attr('class', 'text-content pointer-events-none').append('foreignObject').append('xhtml:div').attr('class', 'w-full h-full flex flex-col items-center justify-center text-center overflow-visible bubble-text-container').html(d => `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1;"></div>`);
     inner.filter(d => !!d.isCenter).append('foreignObject').attr('class', 'center-btn-container pointer-events-none').append('xhtml:div').attr('class', 'w-full h-full flex items-center justify-center text-white center-icon').html('');
     const allNodes = enterGroup.merge(nodeSelection);
     allNodes.filter(d => !!d.isCenter).raise();
-    allNodes.interrupt().style('opacity', 1); // Critical fix for race condition on rapid toggle
+    allNodes.interrupt().style('opacity', 1);
     allNodes.select('.inner-scale').interrupt().style('opacity', d => d.id === selectedTaskId ? 0 : 1).attr('transform', 'scale(1)');
     const isMobile = dimensions.width < 768;
     allNodes.filter(d => !!d.isCenter).select('.center-btn-container').attr('width', isMobile ? 80 : 48).attr('height', isMobile ? 80 : 48).attr('x', isMobile ? -40 : -24).attr('y', isMobile ? -40 : -24);
     allNodes.filter(d => !!d.isCenter).select('.center-icon').style('color', theme === 'dark' ? 'white' : '#475569').html(`<div style="font-family: inherit; font-weight: 200; font-size: ${isMobile ? 56 : 42}px; line-height: 1; margin-top: -4px;">+</div>`);
     allNodes.select('.main-bubble').attr('r', d => d.r).attr('fill', d => { if (d.isCenter) return 'url(#center-glass-gradient)'; if (d.originalTask.completed) return theme === 'dark' ? '#1e293b' : '#cbd5e1'; const color = d.originalTask.color; return color ? `url(#grad-${color.replace('#', '')})` : '#cccccc'; }).attr('stroke', d => d.isCenter ? 'url(#center-glass-stroke)' : 'none').attr('stroke-width', d => d.isCenter ? null : 0).style('filter', d => d.isCenter ? (theme === 'dark' ? 'drop-shadow(0px 8px 32px rgba(0,0,0,0.25))' : 'drop-shadow(0px 8px 24px rgba(0,0,0,0.15))') : (theme === 'dark' ? 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))' : 'drop-shadow(0px 4px 16px rgba(148, 163, 184, 0.4))')).attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`);
     allNodes.select('.pop-ring').attr('r', d => d.r + 3).attr('stroke', d => d.originalTask.completed ? '#22c55e' : '#ef4444').attr('stroke-dasharray', d => 2 * Math.PI * (d.r + 3)).attr('stroke-dashoffset', d => 2 * Math.PI * (d.r + 3));
-    allNodes.select('.text-content foreignObject').attr('width', d => d.r * 1.38).attr('height', d => d.r * 1.38).attr('x', d => -d.r * 0.69).attr('y', d => -d.r * 0.69);
-    allNodes.select('.bubble-text-container').html(d => { if (d.isCenter) return ''; const subtaskCount = d.originalTask.subtasks?.length || 0; const completedSubtasks = d.originalTask.subtasks?.filter(s => s.completed).length || 0; let html = `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1;">${d.originalTask.title}</div>`; if (d.originalTask.dueDate) { const date = new Date(d.originalTask.dueDate); const now = new Date(); const isOverdue = date < now && !d.originalTask.completed; const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth(); const dateStr = isToday ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); const dateSize = Math.max(9, d.r * 0.18); const pillColor = isOverdue ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.2)'; html += `<div style="margin-top: 6px;"><div style="display: inline-block; background: ${pillColor}; padding: 2px 8px; border-radius: 99px; font-size: ${dateSize}px; color: white; font-weight: 600; backdrop-filter: blur(4px);">${dateStr}</div></div>`; } if (subtaskCount > 0) html += `<div style="margin-top: 4px; font-size: ${d.r * 0.2}px; opacity: 0.8; font-weight: 600;">${completedSubtasks}/${subtaskCount}</div>`; return html; });
-    allNodes.select('.bubble-text').style('color', d => d.originalTask.completed ? (theme === 'dark' ? '#94a3b8' : '#64748b') : '#ffffff').style('font-size', d => { let size = calculateFontSize(d.r, d.originalTask.title); if (d.originalTask.dueDate || (d.originalTask.subtasks && d.originalTask.subtasks.length > 0)) size = size * 0.85; return `${size}px`; }).style('opacity', d => d.originalTask.completed ? 0.6 : 1).style('text-decoration', d => d.originalTask.completed ? 'line-through' : 'none');
+    allNodes.select('.text-content foreignObject').attr('width', d => d.r * 1.6).attr('height', d => d.r * 1.6).attr('x', d => -d.r * 0.8).attr('y', d => -d.r * 0.8);
+
+    // REMOVED: D3 Logic to update progress rings
+    
+    // UPDATE: Redesigned Content Layout with Unified "Pill"
+    allNodes.select('.bubble-text-container').html(d => { 
+        if (d.isCenter) return ''; 
+        
+        let html = `<div style="display: flex; flex-direction: column; height: 100%; justify-content: center; align-items: center; position: relative;">`;
+
+        // Title (Centered)
+        // If there is metadata, push title up slightly to center vertically in available space
+        const hasMetadata = d.originalTask.dueDate || d.originalTask.description || (d.originalTask.subtasks && d.originalTask.subtasks.length > 0);
+        const titleStyle = hasMetadata ? 'margin-bottom: 20px;' : ''; 
+        
+        html += `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1; ${titleStyle}">${d.originalTask.title}</div>`; 
+        
+        // Unified Metadata Pill (Bottom)
+        if (hasMetadata && d.r > 40) { // Only show on bubbles large enough
+            html += `<div style="position: absolute; bottom: 8%; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.15); backdrop-filter: blur(4px); padding: 3px 8px; border-radius: 20px; color: white; font-weight: 600; font-size: ${Math.max(9, d.r * 0.14)}px; white-space: nowrap; border: 1px solid rgba(255,255,255,0.1);">`;
+            
+            // Date
+            if (d.originalTask.dueDate) {
+                 const date = new Date(d.originalTask.dueDate);
+                 const now = new Date();
+                 const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth();
+                 const dateStr = isToday ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                 const isOverdue = date < now && !d.originalTask.completed;
+                 const colorStyle = isOverdue ? 'color: #fca5a5;' : ''; // Light red if overdue
+                 html += `<span style="${colorStyle}">${dateStr}</span>`;
+            }
+
+            // Separator if needed
+            if (d.originalTask.dueDate && (d.originalTask.description || (d.originalTask.subtasks && d.originalTask.subtasks.length > 0))) {
+                html += `<div style="width: 3px; height: 3px; background: rgba(255,255,255,0.5); border-radius: 50%;"></div>`;
+            }
+
+            // Description Icon
+            if (d.originalTask.description) {
+                const iconSize = Math.max(10, d.r * 0.16);
+                html += `<svg width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.9"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>`;
+            }
+             
+            // Subtasks Count
+            if (d.originalTask.subtasks && d.originalTask.subtasks.length > 0) {
+                 // Add separator if we have description icon
+                 if (d.originalTask.description) {
+                     html += `<div style="width: 3px; height: 3px; background: rgba(255,255,255,0.5); border-radius: 50%;"></div>`;
+                 }
+                 const completed = d.originalTask.subtasks.filter(s => s.completed).length;
+                 const total = d.originalTask.subtasks.length;
+                 html += `<span>${completed}/${total}</span>`;
+            }
+
+            html += `</div>`;
+        }
+
+        html += `</div>`;
+        return html; 
+    });
+    
+    allNodes.select('.bubble-text').style('color', d => d.originalTask.completed ? (theme === 'dark' ? '#94a3b8' : '#64748b') : '#ffffff').style('font-size', d => { let size = calculateFontSize(d.r, d.originalTask.title); if (d.originalTask.dueDate || d.originalTask.description || (d.originalTask.subtasks && d.originalTask.subtasks.length > 0)) size = size * 0.85; return `${size}px`; }).style('opacity', d => d.originalTask.completed ? 0.6 : 1).style('text-decoration', d => d.originalTask.completed ? 'line-through' : 'none');
     allNodes.style('pointer-events', d => d.id === selectedTaskId ? 'none' : 'all');
     simulation.on('tick', () => { 
         // Optimization: Skip DOM updates if simulation is nearly static and user is not dragging

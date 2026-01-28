@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Task } from '../types';
-import { ArrowLeft, CheckSquare, Square, List, CalendarClock, CheckCircle2, Pencil, GripVertical } from 'lucide-react';
+import { ArrowLeft, CheckSquare, Square, List, CalendarClock, CheckCircle2, Pencil, GripVertical, Check } from 'lucide-react';
 import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE } from '../constants';
 
 interface TaskListViewProps {
@@ -244,37 +244,56 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
       }
   }, [finalizeDrop, onPointerMove]);
 
+  const handleToggleSubtask = (task: Task, subtaskId: string) => {
+    if (!task.subtasks) return;
+    const newSubtasks = task.subtasks.map(s => s.id === subtaskId ? { ...s, completed: !s.completed } : s);
+    onUpdateTask({ ...task, subtasks: newSubtasks });
+  };
+
   const renderTaskContent = (task: Task) => {
     const dotSize = Math.max(4, Math.min(24, 4 + (task.size - MIN_BUBBLE_SIZE) / (MAX_BUBBLE_SIZE - MIN_BUBBLE_SIZE) * 20));
     const subtasks = task.subtasks || [];
-    const completedSubtasks = subtasks.filter(s => s.completed).length;
-    const progress = subtasks.length > 0 ? (completedSubtasks / subtasks.length) * 100 : 0;
+    
     return (
-        <div className={`relative flex items-center gap-4 p-4 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm transition-all ${task.completed ? 'opacity-60' : ''}`}>
-            <div className="h-6 flex items-center justify-center shrink-0">
-                <button onClick={(e) => { e.stopPropagation(); onUpdateTask({ ...task, completed: !task.completed }); }} className={`transition-all duration-300 ${task.completed ? 'text-green-500 scale-100' : 'text-slate-300 hover:text-slate-500 hover:scale-110 active:scale-90'}`}>
-                    {task.completed ? <CheckSquare size={22} /> : <Square size={22} />}
-                </button>
-            </div>
-            <div className="flex-1 min-w-0 flex flex-col gap-0.5 select-none">
-                <h3 className={`font-semibold text-[15px] font-medium leading-6 truncate ${task.completed ? 'text-slate-400 line-through' : 'text-slate-900 dark:text-white/90'}`}>{task.title || "Untitled Task"}</h3>
-                {subtasks.length > 0 && !task.completed && (
-                  <div className="flex items-center gap-2 mt-1">
-                    <div className="flex-1 h-1 bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-500/50 dark:bg-blue-400/50" style={{ width: `${progress}%` }} />
+        <div className={`relative flex flex-col p-4 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm transition-all ${task.completed ? 'opacity-60' : ''}`}>
+            <div className="flex items-center gap-4">
+                <div className="h-6 flex items-center justify-center shrink-0">
+                    <button onClick={(e) => { e.stopPropagation(); onUpdateTask({ ...task, completed: !task.completed }); }} className={`transition-all duration-300 ${task.completed ? 'text-green-500 scale-100' : 'text-slate-300 hover:text-slate-500 hover:scale-110 active:scale-90'}`}>
+                        {task.completed ? <CheckSquare size={22} /> : <Square size={22} />}
+                    </button>
+                </div>
+                <div className="flex-1 min-w-0 flex flex-col gap-0.5 select-none">
+                    <h3 className={`font-semibold text-[15px] font-medium leading-6 truncate ${task.completed ? 'text-slate-400 line-through' : 'text-slate-900 dark:text-white/90'}`}>{task.title || "Untitled Task"}</h3>
+                </div>
+                <div className="flex items-center gap-3 pl-2 shrink-0">
+                    <div className="rounded-full border border-slate-50 dark:border-white/5" style={{ width: `${dotSize}px`, height: `${dotSize}px`, background: task.color, opacity: task.completed ? 0.3 : 0.9, boxShadow: task.completed ? 'none' : `0 0 12px ${task.color}50` }} />
+                    {!task.completed && (
+                    <div className="drag-handle text-slate-300 dark:text-slate-600 cursor-grab active:cursor-grabbing p-2 -mr-2 touch-none">
+                        <GripVertical size={20} />
                     </div>
-                    <span className="text-[9px] font-bold text-slate-400 dark:text-white/30 uppercase">{completedSubtasks}/{subtasks.length}</span>
-                  </div>
-                )}
+                    )}
+                </div>
             </div>
-            <div className="flex items-center gap-3 pl-2 shrink-0">
-                <div className="rounded-full border border-slate-50 dark:border-white/5" style={{ width: `${dotSize}px`, height: `${dotSize}px`, background: task.color, opacity: task.completed ? 0.3 : 0.9, boxShadow: task.completed ? 'none' : `0 0 12px ${task.color}50` }} />
-                {!task.completed && (
-                  <div className="drag-handle text-slate-300 dark:text-slate-600 cursor-grab active:cursor-grabbing p-2 -mr-2 touch-none">
-                    <GripVertical size={20} />
-                  </div>
-                )}
-            </div>
+            
+            {/* Expanded Subtasks View */}
+            {subtasks.length > 0 && !task.completed && (
+                <div className="mt-3 ml-10 flex flex-col gap-1.5 border-l-2 border-slate-200 dark:border-white/10 pl-3">
+                    {subtasks.map(sub => (
+                        <div 
+                            key={sub.id} 
+                            onClick={(e) => { e.stopPropagation(); handleToggleSubtask(task, sub.id); }}
+                            className="flex items-center gap-2.5 group/sub cursor-pointer hover:bg-white/10 p-1 -ml-1 rounded-md transition-colors"
+                        >
+                             <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-colors ${sub.completed ? 'bg-slate-400 border-slate-400 dark:bg-slate-500 dark:border-slate-500' : 'border-slate-300 dark:border-white/30'}`}>
+                                 {sub.completed && <Check size={10} className="text-white" strokeWidth={3} />}
+                             </div>
+                             <span className={`text-xs truncate transition-all ${sub.completed ? 'text-slate-400 line-through' : 'text-slate-600 dark:text-slate-300'}`}>
+                                 {sub.title}
+                             </span>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
   };

@@ -49,28 +49,11 @@ const App: React.FC = () => {
       return (saved === 'light' || saved === 'dark') ? saved : 'light';
   });
   
-  const [user, setUser] = useState<User | null>(() => {
-      try {
-          const saved = localStorage.getItem('user');
-          if (saved) return JSON.parse(saved);
-      } catch {}
-      return {
-          id: 'u1',
-          name: 'Alex Morgan',
-          email: 'alex.morgan@design.co',
-          avatarUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=200&h=200&auto=format&fit=crop'
-      };
-  });
-
   useEffect(() => { localStorage.setItem('tasks', JSON.stringify(tasks)); }, [tasks]);
   useEffect(() => { localStorage.setItem('boards', JSON.stringify(boards)); }, [boards]);
   useEffect(() => { localStorage.setItem('currentBoardId', currentBoardId); }, [currentBoardId]);
   useEffect(() => { localStorage.setItem('theme', theme); }, [theme]);
-  useEffect(() => {
-      if (user) localStorage.setItem('user', JSON.stringify(user));
-      else localStorage.removeItem('user');
-  }, [user]);
-
+  
   useEffect(() => {
     const root = window.document.documentElement;
     if (theme === 'dark') {
@@ -254,14 +237,6 @@ const App: React.FC = () => {
             setShowCompleted(false); 
         }}
         onCreateBoard={handleCreateBoard}
-        user={user}
-        onLogout={() => setUser(null)}
-        onLogin={() => setUser({
-            id: 'u1',
-            name: 'Alex Morgan',
-            email: 'alex.morgan@design.co',
-            avatarUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=200&h=200&auto=format&fit=crop'
-        })}
         isHidden={!!editingTaskId}
         theme={theme}
         onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}

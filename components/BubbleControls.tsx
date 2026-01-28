@@ -4,7 +4,7 @@ import * as d3 from 'd3';
 import { v4 as uuidv4 } from 'uuid';
 import { Task, Board, Subtask } from '../types';
 import { COLOR_GROUPS, MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, calculateFontSize, GLASS_PANEL_CLASS, TOOLTIP_BASE_CLASS } from '../constants';
-import { Trash2, Calendar, AlertTriangle, X, ChevronDown, Check, ChevronUp, AlignLeft, Plus, Square, CheckSquare, ListChecks } from 'lucide-react';
+import { Trash2, Calendar, AlertTriangle, X, ChevronDown, Check, ChevronUp, AlignLeft, Plus, Square, CheckSquare, ListChecks, Palette } from 'lucide-react';
 import { audioService } from '../services/audioService';
 
 interface BubbleControlsProps {
@@ -78,7 +78,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {
           if (colorSectionRef.current && !colorSectionRef.current.contains(event.target as Node)) {
-              setShowColorGrid(false);
+             // Logic to close if needed, but we rely on explicit toggle mostly now
           }
       };
       if (showColorGrid) document.addEventListener('mousedown', handleClickOutside);
@@ -215,8 +215,8 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
   const renderBoardSelector = () => (
     <div className={`relative group shrink-0 ${isMobile ? 'flex-1' : ''}`}>
-        <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition-all border bg-white/20 dark:bg-white/5 hover:bg-white/40 dark:hover:bg-white/20 border-white/30 dark:border-white/5 hover:border-slate-300 dark:hover:border-white/20 text-slate-900 dark:text-white group-hover:text-black dark:group-hover:text-white">
-            <span className="text-xs font-medium truncate max-w-[120px]">{currentBoardName}</span><ChevronDown size={14} className="text-slate-500 dark:text-white/40 group-hover:text-slate-700 dark:group-hover:text-white/90" />
+        <div className="px-5 py-2.5 rounded-full backdrop-blur-xl border shadow-lg flex items-center justify-between gap-2 transition-all hover:scale-[1.02] active:scale-95 touch-none bg-white/30 dark:bg-slate-900/40 border-white/40 dark:border-white/10 hover:bg-white/50 dark:hover:bg-slate-900/60 text-slate-900 dark:text-white cursor-pointer group-hover:text-black dark:group-hover:text-white">
+            <span className="text-sm font-bold truncate max-w-[120px]">{currentBoardName}</span><ChevronDown size={14} className="text-slate-500 dark:text-white/40 group-hover:text-slate-700 dark:group-hover:text-white/90" />
         </div>
         <select value={task.boardId} onChange={(e) => onUpdate({ ...task, boardId: e.target.value })} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full">{boards.map(b => (<option key={b.id} value={b.id}>{b.name}</option>))}</select>
     </div>
@@ -236,9 +236,24 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
   const renderColorPicker = () => (
     <div ref={colorSectionRef} className={`relative group/colors z-10 shrink-0 ${isMobile ? 'w-full' : ''}`}>
-        <div className={`absolute bottom-[calc(100%+8px)] ${isMobile ? 'left-0' : 'left-1/2 -translate-x-1/2'} flex flex-col gap-2 p-2 bg-white/30 dark:bg-slate-900/40 backdrop-blur-3xl border border-white/40 dark:border-white/10 rounded-2xl shadow-2xl transition-all duration-300 origin-bottom ${showColorGrid ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 translate-y-4 pointer-events-none'}`} style={{ width: isMobile ? '100%' : 'max-content' }}>
-                <div className={`flex items-center ${isMobile ? 'justify-between px-4' : 'gap-3 justify-center'}`}>{COLOR_GROUPS.map((group) => (<button key={`${group.name}-light`} onClick={() => onUpdate({ ...task, color: group.shades[0] })} className={`rounded-full transition-transform hover:scale-110 relative ${isMobile ? 'w-10 h-10' : 'w-7 h-7'} ${task.color === group.shades[0] ? 'scale-110 ring-2 ring-white' : ''}`} style={{ backgroundColor: group.shades[0] }} />))}{!isMobile && <div className="w-8 h-8 opacity-0" />}</div>
-                <div className={`flex items-center ${isMobile ? 'justify-between px-4' : 'gap-3 justify-center'}`}>{COLOR_GROUPS.map((group) => (<button key={`${group.name}-dark`} onClick={() => onUpdate({ ...task, color: group.shades[2] })} className={`rounded-full transition-transform hover:scale-110 relative ${isMobile ? 'w-10 h-10' : 'w-7 h-7'} ${task.color === group.shades[2] ? 'scale-110 ring-2 ring-white' : ''}`} style={{ backgroundColor: group.shades[2] }} />))}{!isMobile && <div className="w-8 h-8 opacity-0" />}</div>
+        <div className={`${showColorGrid ? 'flex opacity-100 pointer-events-auto scale-100' : 'hidden opacity-0 pointer-events-none scale-95'} ${isMobile ? 'static flex-col gap-3 w-full mb-4 animate-in slide-in-from-bottom-2 fade-in' : 'absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 flex-col gap-2 p-2 bg-white/30 dark:bg-slate-900/40 backdrop-blur-3xl border border-white/40 dark:border-white/10 rounded-2xl shadow-2xl origin-bottom transition-all duration-300'}`} style={{ width: isMobile ? '100%' : 'max-content' }}>
+                <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-3 justify-center'}`}>
+                    {COLOR_GROUPS.map((group, idx) => {
+                        // Replace the last item (top right) with the Rainbow Button
+                        if (idx === COLOR_GROUPS.length - 1) {
+                            return (
+                                <label key="custom-color" className={`rounded-full transition-transform hover:scale-110 relative flex items-center justify-center cursor-pointer overflow-hidden bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500 ${isMobile ? 'w-10 h-10' : 'w-7 h-7'}`}>
+                                    <input type="color" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => onUpdate({ ...task, color: e.target.value })} />
+                                    <Palette size={isMobile ? 18 : 14} className="text-white drop-shadow-md" />
+                                </label>
+                            );
+                        }
+                        return (
+                            <button key={`${group.name}-light`} onClick={() => onUpdate({ ...task, color: group.shades[0] })} className={`rounded-full transition-transform hover:scale-110 relative ${isMobile ? 'w-10 h-10' : 'w-7 h-7'} ${task.color === group.shades[0] ? 'scale-110 ring-2 ring-white' : ''}`} style={{ backgroundColor: group.shades[0] }} />
+                        );
+                    })}
+                </div>
+                <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-3 justify-center'}`}>{COLOR_GROUPS.map((group) => (<button key={`${group.name}-dark`} onClick={() => onUpdate({ ...task, color: group.shades[2] })} className={`rounded-full transition-transform hover:scale-110 relative ${isMobile ? 'w-10 h-10' : 'w-7 h-7'} ${task.color === group.shades[2] ? 'scale-110 ring-2 ring-white' : ''}`} style={{ backgroundColor: group.shades[2] }} />))}{!isMobile && <div className="w-8 h-8 opacity-0" />}</div>
         </div>
         <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-2 justify-center'}`}>{COLOR_GROUPS.map((group) => (<button key={group.name} onClick={() => onUpdate({ ...task, color: group.shades[1] })} className={`rounded-full transition-all duration-300 relative flex items-center justify-center ${isMobile ? 'w-10 h-10' : 'w-6 h-6'} ${group.shades.includes(task.color) ? 'scale-110 ring-2 ring-white/50 shadow-md' : 'hover:scale-105'}`} style={{ backgroundColor: group.shades[1] }}>{group.shades.includes(task.color) && <div className="absolute -bottom-2 w-1 h-1 bg-slate-800 dark:bg-white rounded-full" />}</button>))}<button onClick={() => setShowColorGrid(!showColorGrid)} className={`rounded-full flex items-center justify-center transition-colors border bg-white/20 dark:bg-white/5 hover:bg-white/40 dark:hover:bg-white/10 border-white/30 dark:border-white/5 text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white ${showColorGrid ? 'bg-white/60 dark:bg-white/20 text-slate-800 dark:text-white' : ''} ${isMobile ? 'w-10 h-10' : 'w-8 h-8'}`}><ChevronUp size={14} className={`transition-transform duration-300 ${showColorGrid ? 'rotate-180' : ''}`} /></button></div>
     </div>
