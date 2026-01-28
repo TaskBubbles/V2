@@ -1,8 +1,9 @@
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Task, Board } from '../types';
-import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, CENTER_RADIUS, calculateFontSize, POP_THRESHOLD_MS } from '../constants';
-import { Maximize, Trash2, Trash } from 'lucide-react';
+import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, CENTER_RADIUS, calculateFontSize, POP_THRESHOLD_MS, FAB_BASE_CLASS } from '../constants';
+import { Maximize, Trash2, Trash, X, Ban } from 'lucide-react';
 import { audioService } from '../services/audioService';
 import { BubbleControls } from './BubbleControls';
 
@@ -16,7 +17,6 @@ interface BubbleCanvasProps {
   onDeleteTask: (taskId: string) => void;
   selectedTaskId: string | null;
   showCompleted: boolean;
-  showEyeButton: boolean;
   onToggleShowCompleted: () => void;
   isShowingCompleted: boolean;
   theme?: 'dark' | 'light';
@@ -42,15 +42,11 @@ const PHYSICS = {
     vDecay: 0.4, 
 };
 
-// The maximum you can zoom in (e.g., 4x magnification)
 const MAX_ZOOM_IN = 4;
-// A hard floor for the zoom behavior to allow "elastic" zooming out beyond the fit
 const MIN_ZOOM_HARD_LIMIT = 0.02;
-// Padding around the bubbles when calculating the "Perfect Fit"
 const VIEWPORT_PADDING = 60;
-
-// Unified FAB Styling
-const FAB_CLASS = "p-3 rounded-2xl transition-all shadow-lg active:scale-95 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-white/10 text-slate-700 dark:text-white/80 hover:bg-white/60 dark:hover:bg-slate-900/60 hover:scale-105 hover:text-slate-900 dark:hover:text-white";
+// Increased buffer to 350ms to prevent accidental swipes to trash
+const TRASH_SNAP_DURATION = 350; 
 
 export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   tasks,
@@ -62,8 +58,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   onDeleteTask,
   selectedTaskId,
   showCompleted,
-  showEyeButton,
-  onToggleShowCompleted: onToggleShowCompleted,
+  onToggleShowCompleted,
   isShowingCompleted,
   theme = 'dark',
 }) => {
@@ -74,14 +69,15 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   const simulationRef = useRef<d3.Simulation<SimulationNode, undefined> | null>(null);
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   
-  // Interaction State
   const activePointers = useRef<Set<number>>(new Set());
   const draggingNodeRef = useRef<SimulationNode | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const isDraggingRef = useRef(false);
   const dragStartPosRef = useRef<{x: number, y: number} | null>(null);
   const didPopRef = useRef(false);
   
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const poppingNodeIdRef = useRef<string | null>(null);
 
   const [editStartPos, setEditStartPos] = useState<{x: number, y: number, k: number} | null>(null);
@@ -89,19 +85,17 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   const zoomBehavior = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const isUserInteracting = useRef(false);
   const zoomEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isAutoScaling = useRef(true); // Default to Auto Scaling ON
+  const isAutoScaling = useRef(true); 
   const prevTaskCount = useRef(tasks.length);
   const prevTasksHash = useRef('');
   const lastFitKRef = useRef(0);
   
-  // Stores the calculated "floor" zoom level
   const minZoomRef = useRef(0.1);
-  // Zoom State for Tooltip
   const [isZoomedIn, setIsZoomedIn] = useState(false);
   const isZoomedInRef = useRef(false);
   
-  // Drag to Trash State
   const [isHoveringTrash, setIsHoveringTrash] = useState(false);
+  const [isTrashActivated, setIsTrashActivated] = useState(false); 
 
   const hasResumedAudio = useRef(false);
   const ensureAudio = () => {
@@ -110,6 +104,11 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       hasResumedAudio.current = true;
     }
   };
+
+  // Re-enable auto scaling when completed tasks toggle
+  useEffect(() => {
+    isAutoScaling.current = true;
+  }, [showCompleted]);
 
   const clearHoldTimer = useCallback(() => {
     if (holdTimerRef.current) {
@@ -146,16 +145,29 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // --- AUTO-SCALE TRIGGER ON NEW TASK ---
+  useEffect(() => {
+    if (isHoveringTrash) {
+        trashTimerRef.current = setTimeout(() => {
+            setIsTrashActivated(true);
+            if (navigator.vibrate) navigator.vibrate([15]); 
+            audioService.playHover(); 
+        }, TRASH_SNAP_DURATION);
+    } else {
+        if (trashTimerRef.current) clearTimeout(trashTimerRef.current);
+        setIsTrashActivated(false);
+    }
+    return () => {
+        if (trashTimerRef.current) clearTimeout(trashTimerRef.current);
+    };
+  }, [isHoveringTrash]);
+
   useEffect(() => {
       if (tasks.length > prevTaskCount.current) {
-          // New task added: Re-enable auto scaling to fit the new bubble
           isAutoScaling.current = true;
       }
       prevTaskCount.current = tasks.length;
   }, [tasks.length]);
 
-  // --- ZOOM INITIALIZATION ---
   useEffect(() => {
     if (!svgRef.current) return;
     const svg = d3.select(svgRef.current);
@@ -166,7 +178,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       .filter((event) => {
          if (event.type === 'touchstart' && event.touches.length > 1) return true; 
          if (event.type === 'wheel') return true;
-         // Allow panning on background, disable on nodes to prioritize drag
          const isNode = event.target && (event.target as Element).closest('.node');
          if (isNode) return false;
          return true; 
@@ -178,12 +189,11 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
                  zoomEndTimeoutRef.current = null;
              }
              isUserInteracting.current = true;
-             isAutoScaling.current = false; // User intervention breaks auto-scale
+             isAutoScaling.current = false; 
          }
       })
       .on('end', (event) => {
          if (event.sourceEvent) {
-             // Debounce the end event to prevent flicker on rapid events (e.g. wheel)
              zoomEndTimeoutRef.current = setTimeout(() => {
                  isUserInteracting.current = false;
                  zoomEndTimeoutRef.current = null;
@@ -192,10 +202,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       })
       .on('zoom', (event) => {
         g.attr('transform', event.transform.toString());
-        
-        // Update Zoom State for Tooltip (Throttled via check)
         const k = event.transform.k;
-        const isZoomed = k > minZoomRef.current * 1.1; // 10% threshold above fit
+        const isZoomed = k > minZoomRef.current * 1.1; 
         if (isZoomed !== isZoomedInRef.current) {
              isZoomedInRef.current = isZoomed;
              setIsZoomedIn(isZoomed);
@@ -205,12 +213,10 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     svg.call(zoomBehavior.current).on('dblclick.zoom', null);
   }, []);
 
-  // --- INTERACTION HANDLERS ---
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
       ensureAudio();
       activePointers.current.add(event.pointerId);
 
-      // Multi-touch logic (cancel node drag if second finger touches)
       if (activePointers.current.size > 1) {
           if (draggingNodeRef.current) {
               const d = draggingNodeRef.current;
@@ -218,6 +224,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
               d.fy = null;
               draggingNodeRef.current = null;
               isDraggingRef.current = false;
+              setIsDragging(false);
               setIsHoveringTrash(false);
               clearHoldTimer();
               if (simulationRef.current) simulationRef.current.alphaTarget(0);
@@ -225,7 +232,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           return; 
       }
 
-      // Find Node
       const transform = d3.zoomTransform(svgRef.current!);
       const mouseX = (event.nativeEvent.offsetX - transform.x) / transform.k;
       const mouseY = (event.nativeEvent.offsetY - transform.y) / transform.k;
@@ -251,9 +257,9 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           draggingNodeRef.current = foundNode;
           dragStartPosRef.current = { x: event.clientX, y: event.clientY };
           isDraggingRef.current = false;
+          setIsDragging(false);
           didPopRef.current = false;
 
-          // Lock position for drag
           if (!foundNode.isCenter) {
               foundNode.fx = foundNode.x;
               foundNode.fy = foundNode.y;
@@ -261,7 +267,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
           if (simulationRef.current) simulationRef.current.alphaTarget(0.3).restart();
 
-          // Pop Logic
           if (!foundNode.isCenter && foundNode.id !== selectedTaskId) {
              poppingNodeIdRef.current = foundNode.id;
              const nodeEl = d3.select(`#node-${foundNode.id}`);
@@ -274,6 +279,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
              popRing.style('opacity', 1).transition().duration(POP_THRESHOLD_MS).ease(d3.easeQuadIn).attr('stroke-dashoffset', 0);
 
              holdTimerRef.current = setTimeout(() => {
+                 if (!draggingNodeRef.current || draggingNodeRef.current.id !== foundNode?.id) return;
+                 
                  didPopRef.current = true;
                  audioService.playPop();
                  createExplosion(foundNode?.x || 0, foundNode?.y || 0, foundNode?.originalTask.color || '#fff', foundNode?.r || 50);
@@ -281,7 +288,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
                  shakeEl.classed('charging-shake', false);
                  innerEl.classed('is-popping', true);
                  
-                 innerEl.transition().duration(100).ease(d3.easeBackIn.overshoot(3)).attr('transform', 'scale(1.2)')
+                 innerEl.interrupt().transition().duration(100).ease(d3.easeBackIn.overshoot(3))
+                    .attr('transform', 'scale(1.2)')
                     .style('opacity', 0)
                     .on('end', () => {
                          if (foundNode) onToggleComplete(foundNode.originalTask);
@@ -295,24 +303,30 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   };
 
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+      if (didPopRef.current) return;
+
       if (draggingNodeRef.current && activePointers.current.size === 1) {
           if (dragStartPosRef.current) {
               const dx = event.clientX - dragStartPosRef.current.x;
               const dy = event.clientY - dragStartPosRef.current.y;
               if (Math.hypot(dx, dy) > 10) {
                   isDraggingRef.current = true;
+                  setIsDragging(true);
                   clearHoldTimer();
               }
           }
 
           if (draggingNodeRef.current.isCenter) return;
 
-          // Collision Detection with Trash
-          if (trashBtnRef.current && showEyeButton) {
+          const transform = d3.zoomTransform(svgRef.current!);
+          let x = (event.nativeEvent.offsetX - transform.x) / transform.k;
+          let y = (event.nativeEvent.offsetY - transform.y) / transform.k;
+
+          if (trashBtnRef.current) {
               const trashRect = trashBtnRef.current.getBoundingClientRect();
               const mx = event.clientX;
               const my = event.clientY;
-              const buffer = 20; // Hitbox padding
+              const buffer = 80; 
 
               const isOver = (
                   mx >= trashRect.left - buffer && 
@@ -321,25 +335,53 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
                   my <= trashRect.bottom + buffer
               );
 
+              if (isOver) {
+                  const trashCenterX = trashRect.left + trashRect.width / 2;
+                  const trashCenterY = trashRect.top + trashRect.height / 2;
+                  const svgTrashX = (trashCenterX - transform.x) / transform.k;
+                  const svgTrashY = (trashCenterY - transform.y) / transform.k;
+                  const magneticStrength = 0.5;
+                  x = x * (1 - magneticStrength) + svgTrashX * magneticStrength;
+                  y = y * (1 - magneticStrength) + svgTrashY * magneticStrength;
+              }
+
               if (isOver !== isHoveringTrash) {
                   setIsHoveringTrash(isOver);
                   if (isOver) {
-                       // Haptic feedback or audio tick could go here
-                       audioService.playHover();
+                       if(navigator.vibrate) navigator.vibrate(20);
+                  } else {
+                       if(navigator.vibrate) navigator.vibrate(10);
                   }
               }
               
-              // Apply shake to dragged node if hovering trash
-              const nodeEl = d3.select(`#node-${draggingNodeRef.current.id} .shake-group`);
-              nodeEl.classed('charging-shake', isOver);
+              const nodeEl = d3.select(`#node-${draggingNodeRef.current.id}`);
+              const mainBubble = nodeEl.select('.main-bubble');
+              const innerScale = nodeEl.select('.inner-scale');
+              
+              if (isOver) {
+                   innerScale.transition().duration(250).ease(d3.easeCubicOut).attr('transform', 'scale(0.5)'); 
+                   nodeEl.classed('deleting-node', true);
+                   mainBubble.attr('fill', '#ef4444'); 
+                   mainBubble.style('filter', 'drop-shadow(0px 0px 15px rgba(239,68,68,0.6))');
+                   nodeEl.select('.bubble-text').style('opacity', 0);
+              } else {
+                   innerScale.transition().duration(250).ease(d3.easeElasticOut).attr('transform', 'scale(1)');
+                   nodeEl.classed('deleting-node', false);
+                   const originalColor = draggingNodeRef.current.originalTask.color;
+                   const isCompleted = draggingNodeRef.current.originalTask.completed;
+                   if (isCompleted) {
+                       mainBubble.attr('fill', theme === 'dark' ? '#1e293b' : '#cbd5e1');
+                   } else {
+                       mainBubble.attr('fill', `url(#grad-${originalColor.replace('#', '')})`);
+                   }
+                   
+                   mainBubble.style('filter', theme === 'dark' ? 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))' : 'drop-shadow(0px 4px 16px rgba(148, 163, 184, 0.4))');
+                   nodeEl.select('.bubble-text').style('opacity', isCompleted ? 0.6 : 1);
+              }
           }
 
           event.preventDefault(); 
           event.stopPropagation();
-
-          const transform = d3.zoomTransform(svgRef.current!);
-          const x = (event.nativeEvent.offsetX - transform.x) / transform.k;
-          const y = (event.nativeEvent.offsetY - transform.y) / transform.k;
           
           draggingNodeRef.current.fx = x;
           draggingNodeRef.current.fy = y;
@@ -351,15 +393,22 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   const handlePointerUp = (event: React.PointerEvent<SVGSVGElement>) => {
       activePointers.current.delete(event.pointerId);
       
+      if (didPopRef.current) {
+          try { (event.target as Element).releasePointerCapture(event.pointerId); } catch(e) {}
+          return;
+      }
+
       if (draggingNodeRef.current) {
           const d = draggingNodeRef.current;
           
-          // --- DROP TO TRASH LOGIC ---
-          if (isHoveringTrash && showEyeButton) {
-              handleProgrammaticPop(d.originalTask);
+          if (isHoveringTrash && isTrashActivated) {
+              handleProgrammaticPop(d.originalTask, undefined, true);
+              
               setIsHoveringTrash(false);
+              setIsTrashActivated(false);
               draggingNodeRef.current = null;
               isDraggingRef.current = false;
+              setIsDragging(false);
               d.fx = null; d.fy = null;
               try { (event.target as Element).releasePointerCapture(event.pointerId); } catch(e) {}
               return;
@@ -369,7 +418,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
               if (d.isCenter) {
                   if (!selectedTaskId) onAddTask();
               } else if (d.id !== selectedTaskId) {
-                  // Capture screen position for "fly out" animation start point
                   if (d.x !== undefined && d.y !== undefined) {
                       const t = d3.zoomTransform(svgRef.current!);
                       const screenX = t.x + d.x * t.k;
@@ -386,6 +434,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           }
           draggingNodeRef.current = null;
           isDraggingRef.current = false;
+          setIsDragging(false);
           setIsHoveringTrash(false);
           clearHoldTimer();
           
@@ -400,15 +449,12 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       }
   };
 
-
   useEffect(() => {
     if (!svgRef.current || !zoomBehavior.current) return;
     const svg = d3.select(svgRef.current);
 
     if (selectedTaskId) {
-       // Disable zoom when a task is open
        svg.on('.zoom', null);
-       // Reset to identity for overlay positioning stability
        svg.transition().duration(800)
           .call(zoomBehavior.current.transform, d3.zoomIdentity);
     } else {
@@ -447,7 +493,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         .attr('r', radius * 1.4).style('opacity', 0).remove();
   };
 
-  const handleProgrammaticPop = (task: Task, coords?: { x: number, y: number }) => {
+  const handleProgrammaticPop = (task: Task, coords?: { x: number, y: number }, isTrashPop: boolean = false) => {
       const nodeEl = d3.select(`#node-${task.id}`);
       if (nodeEl.empty()) return;
 
@@ -455,22 +501,39 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       const popRing = nodeEl.select('.pop-ring');
       
       let x = 0, y = 0;
-      if (coords) {
-          x = coords.x; y = coords.y;
-      } else {
-          // Fallback parsing (rarely used if coords provided)
-          const transform = nodeEl.attr('transform');
-          if (transform) {
-              const match = transform.match(/translate\(([^,]+),([^)]+)\)/);
-              if (match) { x = parseFloat(match[1]); y = parseFloat(match[2]); }
-          }
+      const transform = nodeEl.attr('transform');
+      if (transform) {
+          const match = transform.match(/translate\(([^,]+),([^)]+)\)/);
+          if (match) { x = parseFloat(match[1]); y = parseFloat(match[2]); }
       }
       
+      if (isTrashPop && trashBtnRef.current && svgRef.current) {
+          audioService.playPop(); 
+          // Show particles at the current position before it implodes
+          createExplosion(x, y, task.color, task.size);
+          
+          const trashRect = trashBtnRef.current.getBoundingClientRect();
+          const t = d3.zoomTransform(svgRef.current);
+          const tx = (trashRect.left + trashRect.width/2 - t.x) / t.k;
+          const ty = (trashRect.top + trashRect.height/2 - t.y) / t.k;
+
+          nodeEl.transition().duration(400).ease(d3.easeBackIn.overshoot(1.5))
+            .attr('transform', `translate(${tx},${ty}) scale(0.1)`)
+            .style('opacity', 0)
+            .on('end', () => {
+                 onToggleComplete(task); 
+                 onEditTask(null as any);
+            });
+            
+          return;
+      }
+      
+      if (coords) { x = coords.x; y = coords.y; }
+
       audioService.playPop();
       createExplosion(x, y, task.color, task.size);
       
       if (coords) {
-          // Came from overlay
           setTimeout(() => {
              onToggleComplete(task);
              onEditTask(null as any);
@@ -482,6 +545,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
             .on('end', () => {
                  onToggleComplete(task);
                  onEditTask(null as any);
+                 innerEl.style('opacity', 1).attr('transform', 'scale(1)');
             });
       }
   };
@@ -497,21 +561,23 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
     const width = dimensions.width;
     const height = dimensions.height;
-    
     const visibleTasks = showCompleted ? tasks : tasks.filter(t => !t.completed);
     
-    // Check if we are doing a full restart (Data Change) or soft restart (Resize)
-    const currentTasksHash = visibleTasks.map(t => t.id + t.completed + (t.x || 0)).join('|');
-    const isDataChange = currentTasksHash !== prevTasksHash.current;
-    // We only update hash if data changed significantly, ignoring minor float pos changes
-    // But for initial load, tracking ID length is enough.
-    // Let's stick to checking ID+Completed state
     const simpleHash = visibleTasks.map(t => t.id + t.completed).join('|');
     const isRealDataChange = simpleHash !== prevTasksHash.current;
     prevTasksHash.current = simpleHash;
 
-    const oldNodes: SimulationNode[] = simulationRef.current?.nodes() || [];
-    const oldNodesMap = new Map(oldNodes.map(n => [n.id, n]));
+    const currentNodes = simulationRef.current?.nodes() || [];
+    const oldNodesMap = new Map<string, SimulationNode>(
+      currentNodes.map(n => [n.id, n] as [string, SimulationNode])
+    );
+
+    if (draggingNodeRef.current && !visibleTasks.find(t => t.id === draggingNodeRef.current?.id)) {
+        draggingNodeRef.current = null;
+        isDraggingRef.current = false;
+        setIsDragging(false);
+        clearHoldTimer();
+    }
 
     const nodes: SimulationNode[] = visibleTasks.map((task) => {
       const existing = oldNodesMap.get(task.id);
@@ -540,18 +606,14 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         .alphaMin(0.0001).alphaDecay(0.02); 
     } else {
       simulationRef.current.nodes(nodes);
-      // Gentle restart on resize, stronger on data change
       simulationRef.current.alpha(isRealDataChange ? 0.8 : 0.3).restart();
     }
     const simulation = simulationRef.current;
     const svg = d3.select(svgRef.current);
     
-    // Gradient definitions (retained for brevity, same as previous)
     let defs = svg.select<SVGDefsElement>('defs');
     if (defs.empty()) defs = svg.append('defs');
     
-    // --- GRADIENT SETUP (Glass/Theme) ---
-    // Clears old gradients to prevent duplication/stale themes
     defs.select('#center-glass-gradient').remove();
     defs.select('#center-glass-gradient-hover').remove();
     defs.select('#center-glass-stroke').remove();
@@ -593,11 +655,14 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         }
     });
 
-    // Node Rendering
     const svgContent = svg.select('.canvas-content');
     const nodeSelection = svgContent.selectAll<SVGGElement, SimulationNode>('.node').data(nodes, d => d.id);
 
-    nodeSelection.exit().transition().duration(600).style('opacity', 0).attr('transform', (d: any) => `translate(${d.x},${d.y}) scale(0.1)`).remove();
+    nodeSelection.exit().interrupt()
+       .transition().duration(600)
+       .style('opacity', 0)
+       .attr('transform', (d: any) => `translate(${d.x},${d.y}) scale(0.1)`)
+       .remove();
 
     const enterGroup = nodeSelection.enter().append('g')
        .attr('class', d => `node cursor-pointer group ${d.isCenter ? 'center-node' : ''}`)
@@ -624,6 +689,11 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     const allNodes = enterGroup.merge(nodeSelection);
     allNodes.filter(d => !!d.isCenter).raise();
     
+    allNodes.select('.inner-scale')
+        .interrupt()
+        .style('opacity', d => d.id === selectedTaskId ? 0 : 1)
+        .attr('transform', 'scale(1)');
+
     const isMobile = dimensions.width < 768;
     allNodes.filter(d => !!d.isCenter).select('.center-btn-container')
        .attr('width', isMobile ? 80 : 48).attr('height', isMobile ? 80 : 48).attr('x', isMobile ? -40 : -24).attr('y', isMobile ? -40 : -24);
@@ -684,10 +754,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         .style('text-decoration', d => d.originalTask.completed ? 'line-through' : 'none');
 
     allNodes.style('pointer-events', d => d.id === selectedTaskId ? 'none' : 'all');
-    allNodes.select('.inner-scale').style('opacity', d => d.id === selectedTaskId ? 0 : 1).attr('transform', 'scale(1)');
 
     simulation.on('tick', () => {
-       // 1. Prevent Center Overlap
        const cx = dimensions.width / 2;
        const cy = dimensions.height / 2;
        const hardCenterBuffer = 10; 
@@ -707,15 +775,11 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           }
        });
 
-       // 2. Update Position
        allNodes.attr('transform', d => `translate(${d.x},${d.y})`);
 
-       // 3. UNIFIED CAMERA LOGIC
        if (zoomBehavior.current && svgRef.current) {
            const simCx = dimensions.width / 2;
            const simCy = dimensions.height / 2;
-
-           // Calculate Bounds (Symmetric for Fit, Actual for Extent)
            let maxDistX = 0;
            let maxDistY = 0;
            let hasNodes = false;
@@ -724,11 +788,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
               if (n.x === undefined || n.y === undefined) return;
               hasNodes = true;
               const r = n.r + 20; 
-              
-              // Distance from center (Symmetric calc for FitK to align with simulation center)
               const dx = Math.abs(n.x - simCx) + r;
               const dy = Math.abs(n.y - simCy) + r;
-
               if (dx > maxDistX) maxDistX = dx;
               if (dy > maxDistY) maxDistY = dy;
            });
@@ -738,11 +799,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
                maxDistY = 100;
            }
 
-           // Determine necessary viewport size to fit this symmetric bounds
            const requiredW = (maxDistX + VIEWPORT_PADDING) * 2;
            const requiredH = (maxDistY + VIEWPORT_PADDING) * 2;
-
-           // Calculate Fit Scale
            const scaleX = dimensions.width / requiredW;
            const scaleY = dimensions.height / requiredH;
            let fitK = Math.min(scaleX, scaleY);
@@ -752,20 +810,12 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
            minZoomRef.current = fitK;
 
-           // --- DYNAMIC CONSTRAINTS (Gated by interaction state and change threshold) ---
            if (!isUserInteracting.current && zoomBehavior.current) {
-                // Only update if fitK changed significantly (e.g. layout change) to prevent flickering
                 if (Math.abs(fitK - lastFitKRef.current) > 0.005) {
                     lastFitKRef.current = fitK;
-                    
-                    // Apply Scale Extent: Snap bottom to fitK (Hard Stop for "Max Zoom Out")
                     zoomBehavior.current.scaleExtent([fitK, MAX_ZOOM_IN]);
-                    
-                    // Calculate the world size visible at max zoom (fitK)
                     const worldVisibleW = dimensions.width / fitK;
                     const worldVisibleH = dimensions.height / fitK;
-
-                    // Set translate extent exactly to the viewport world size at max zoom.
                     zoomBehavior.current.translateExtent([
                        [simCx - worldVisibleW / 2, simCy - worldVisibleH / 2],
                        [simCx + worldVisibleW / 2, simCy + worldVisibleH / 2]
@@ -773,19 +823,12 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
                 }
            }
 
-           // AUTOMATIC DRIFT (Seamless "Snap-to-Fit")
            if (!isUserInteracting.current && !selectedTaskId) {
                const t = d3.zoomTransform(svg.node() as Element);
-
                const isAtOrBelowFloor = t.k < fitK * 1.01;
-
-               // Requirement 1 & 2: If auto-scaling mode is active OR we are naturally at the floor
                if (isAutoScaling.current || isAtOrBelowFloor) {
-                   // Target: Center Node (simCx, simCy) at Screen Center
-                   // transform.x = screenCenter - simCenter * k
                    const targetX = (dimensions.width / 2) - simCx * fitK;
                    const targetY = (dimensions.height / 2) - simCy * fitK;
-                   
                    const k = t.k + (fitK - t.k) * 0.1;
                    const x = t.x + (targetX - t.x) * 0.1;
                    const y = t.y + (targetY - t.y) * 0.1;
@@ -831,15 +874,12 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
   const handleResetView = useCallback(() => {
     ensureAudio();
-    isAutoScaling.current = true; // Manual reset re-enables auto-scale
+    isAutoScaling.current = true; 
     if (simulationRef.current) simulationRef.current.alpha(0.3).restart();
   }, []);
 
   const selectedTask = activeTask || tasks.find(t => t.id === selectedTaskId);
   
-  // Logic to determine if trash is "open" (spilled or receiving)
-  const isTrashOpen = isShowingCompleted || isHoveringTrash;
-
   return (
     <div ref={wrapperRef} className="w-full h-full relative bg-slate-50 dark:bg-[#020617] overflow-hidden transition-colors duration-500" onPointerDown={ensureAudio}>
       <style>{`
@@ -875,6 +915,19 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
          <div className={`absolute bottom-[-20%] right-[10%] w-[40%] h-[40%] rounded-full bg-[#818CF8] blur-[100px] transition-opacity duration-500 ${theme === 'dark' ? 'opacity-20' : 'opacity-40'}`} />
       </div>
 
+      <div className={`absolute inset-0 pointer-events-none z-20 transition-all duration-300 ease-out 
+          ${isHoveringTrash ? 'opacity-100' : 'opacity-0'}`}>
+          <div className="absolute inset-0 shadow-[inset_0_-100px_150px_-50px_rgba(239,68,68,0.2)] dark:shadow-[inset_0_-100px_150px_-50px_rgba(239,68,68,0.3)]" />
+      </div>
+
+      <div className={`absolute top-12 left-1/2 -translate-x-1/2 z-40 pointer-events-none transition-all duration-300 cubic-bezier(0.175, 0.885, 0.32, 1.275)
+          ${isTrashActivated ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-8 scale-90'}`}>
+          <div className="flex items-center gap-2 px-5 py-2.5 bg-red-500 text-white rounded-full shadow-lg shadow-red-500/40 border border-white/20 backdrop-blur-md">
+              <Trash className="w-5 h-5 animate-bounce" />
+              <span className="font-bold tracking-wide text-sm">Release to Pop</span>
+          </div>
+      </div>
+
       <svg 
         ref={svgRef} 
         className={`absolute inset-0 w-full h-full z-10 ${selectedTaskId ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}`}
@@ -904,36 +957,46 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
       {!selectedTaskId && (
           <>
-            {showEyeButton && (
-                <div className="absolute bottom-8 left-8 z-50">
+            <div className="absolute bottom-8 left-8 z-30">
+                <div className="relative group">
+                    <div className={`absolute inset-0 rounded-full blur-xl transition-all duration-500 pointer-events-none ${isHoveringTrash ? 'bg-red-500/40 scale-150' : 'bg-transparent scale-100'}`} />
+
                     <button 
                         ref={trashBtnRef}
                         onClick={onToggleShowCompleted} 
-                        className={`${FAB_CLASS} ${isHoveringTrash ? 'bg-red-500/20 border-red-500 text-red-500 scale-125' : ''} ${isShowingCompleted ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') : ''}`}
+                        className={`${FAB_BASE_CLASS} relative z-10 transition-all duration-300
+                            ${isDragging 
+                                ? 'bg-red-500/90 border-red-500/50 text-white shadow-xl shadow-red-500/20' 
+                                : (isShowingCompleted ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') : '')
+                            }
+                            ${isTrashActivated ? 'scale-[1.35] rotate-12 bg-red-600 border-red-400' : ''}
+                            ${isHoveringTrash && !isTrashActivated ? 'scale-125' : ''}
+                        `}
                     >
-                    <div className={`transition-transform duration-500 relative ${isShowingCompleted ? 'rotate-[135deg]' : 'rotate-0'}`}>
-                         {isTrashOpen ? <Trash size={22} /> : <Trash2 size={22} />}
-                         
-                         {/* Debris particles - Only visible when spilled (and rotated) */}
-                         {isShowingCompleted && (
-                             <div className="absolute -top-3 left-0 w-full h-full flex justify-center gap-1 pointer-events-none">
+                    <div className={`transition-transform duration-300 relative ${isShowingCompleted && !isHoveringTrash ? 'rotate-[135deg]' : 'rotate-0'}`}>
+                            {isHoveringTrash
+                            ? <Trash2 size={24} className={isTrashActivated ? 'animate-bounce' : ''} strokeWidth={isTrashActivated ? 2.5 : 2} /> 
+                            : <Trash size={22} />
+                            }
+                            
+                            {isShowingCompleted && !isHoveringTrash && (
+                                <div className="absolute -top-3 left-0 w-full h-full flex justify-center gap-1 pointer-events-none">
                                 <div className="w-1 h-1 bg-current rounded-full opacity-80" />
                                 <div className="w-1.5 h-1.5 bg-current rounded-sm opacity-80 translate-y-1" />
                                 <div className="w-1 h-1 bg-current rounded-full opacity-80" />
-                             </div>
-                         )}
+                                </div>
+                            )}
                     </div>
                     </button>
                 </div>
-            )}
+            </div>
             
-            <div className={`absolute bottom-8 right-8 z-50 flex flex-col items-center transition-all duration-300 ${isZoomedIn ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
-                {/* Reset Zoom Tooltip - To the Left */}
+            <div className={`absolute bottom-8 right-8 z-30 flex flex-col items-center transition-all duration-300 ${isZoomedIn ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
                 <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-slate-800/90 dark:bg-white/90 text-white dark:text-slate-900 text-[10px] font-bold rounded-lg shadow-lg backdrop-blur-sm whitespace-nowrap pointer-events-none">
                     Reset Zoom
                 </div>
                 <button onClick={handleResetView} 
-                  className={FAB_CLASS}
+                  className={FAB_BASE_CLASS}
                   title="Reset View">
                     <Maximize size={22} />
                 </button>

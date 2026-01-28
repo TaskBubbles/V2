@@ -56,6 +56,9 @@ export const MAX_BUBBLE_SIZE = 220;
 export const CENTER_RADIUS = 50; 
 export const POP_THRESHOLD_MS = 600;
 
+// Unified FAB Styling used across App, Sidebar, and Canvas
+export const FAB_BASE_CLASS = "p-3 rounded-2xl transition-all shadow-lg active:scale-95 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-white/10 text-slate-700 dark:text-white/80 hover:bg-white/60 dark:hover:bg-slate-900/60 hover:scale-105 hover:text-slate-900 dark:hover:text-white";
+
 /**
  * Calculates a dynamic font size to fit text within the bubble.
  * Uses strict heuristics to ensure the longest word fits without breaking.

@@ -3,6 +3,7 @@ import { Menu, Plus, LayoutGrid, List, Archive, LogOut, User as UserIcon, LogIn,
 import { Board, User } from '../types';
 import { audioService } from '../services/audioService';
 import { notificationService } from '../services/notificationService';
+import { FAB_BASE_CLASS } from '../constants';
 
 interface SidebarProps {
   boards: Board[];
@@ -102,14 +103,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <button
         id="sidebar-toggle"
         onClick={() => setIsOpen(true)}
-        className={`absolute top-6 left-6 p-3 rounded-2xl transition-all shadow-lg z-30 group 
-            bg-white/40 dark:bg-slate-900/40 
-            hover:bg-white/60 dark:hover:bg-slate-900/60
-            hover:scale-105 active:scale-95
-            text-slate-700 dark:text-white/80 
-            hover:text-slate-900 dark:hover:text-white
-            border border-white/40 dark:border-white/10 
-            backdrop-blur-xl
+        className={`absolute top-6 left-6 ${FAB_BASE_CLASS} z-30 group
             ${isHidden ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'}`}
       >
         <Menu size={22} className="" />
