@@ -11,7 +11,7 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'favicon.svg'],
       manifest: {
         name: 'Task Bubbles',
-        short_name: 'Task Bubbles',
+        short_name: 'Bubbles',
         description: 'A physics-based, interactive task management tool.',
         theme_color: '#020617',
         background_color: '#020617',

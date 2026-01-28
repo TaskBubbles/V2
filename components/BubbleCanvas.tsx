@@ -1,8 +1,9 @@
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Task, Board } from '../types';
 import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, CENTER_RADIUS, calculateFontSize, POP_THRESHOLD_MS, FAB_BASE_CLASS, TOOLTIP_BASE_CLASS } from '../constants';
-import { Maximize, Trash2, Trash, X, Ban } from 'lucide-react';
+import { Maximize, Trash2, Trash, X, Ban, RefreshCcw } from 'lucide-react';
 import { audioService } from '../services/audioService';
 import { BubbleControls } from './BubbleControls';
 
@@ -19,7 +20,7 @@ interface BubbleCanvasProps {
   onToggleShowCompleted: () => void;
   isShowingCompleted: boolean;
   theme?: 'dark' | 'light';
-  currentBoardId?: string | 'ALL' | 'COMPLETED';
+  hideTrash?: boolean;
 }
 
 interface SimulationNode extends d3.SimulationNodeDatum {
@@ -61,7 +62,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   onToggleShowCompleted,
   isShowingCompleted,
   theme = 'dark',
-  currentBoardId = '1',
+  hideTrash = false,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -99,6 +100,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   
   const [isHoveringTrash, setIsHoveringTrash] = useState(false);
   const [isTrashActivated, setIsTrashActivated] = useState(false); 
+  const [draggingCompletedTask, setDraggingCompletedTask] = useState(false);
 
   const [showResetTooltip, setShowResetTooltip] = useState(false);
   const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -110,9 +112,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       hasResumedAudio.current = true;
     }
   };
-
-  const hasCompletedTasks = tasks.some(t => t.completed);
-  const canToggleTrash = hasCompletedTasks;
 
   const handleResetView = useCallback(() => {
     ensureAudio();
@@ -260,6 +259,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
               isDraggingRef.current = false;
               setIsDragging(false);
               setIsHoveringTrash(false);
+              setDraggingCompletedTask(false);
               clearHoldTimer();
               if (simulationRef.current) simulationRef.current.alphaTarget(0);
           }
@@ -289,6 +289,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           if (selectedTaskId && foundNode.id === selectedTaskId) return;
 
           draggingNodeRef.current = foundNode;
+          setDraggingCompletedTask(foundNode.originalTask?.completed || false);
           dragStartPosRef.current = { x: event.clientX, y: event.clientY };
           isDraggingRef.current = false;
           setIsDragging(false);
@@ -308,6 +309,10 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
              const shakeEl = nodeEl.select('.shake-group');
              const popRing = nodeEl.select('.pop-ring');
              
+             // Dynamic pop color based on completion status (Green if completed, Red if active)
+             const popColor = foundNode.originalTask.completed ? '#22c55e' : '#ef4444';
+             popRing.attr('stroke', popColor);
+
              innerEl.transition().duration(250).ease(d3.easeCubicOut).attr('transform', 'scale(0.95)');
              shakeEl.classed('charging-shake', true);
              popRing.style('opacity', 1).transition().duration(POP_THRESHOLD_MS).ease(d3.easeQuadIn).attr('stroke-dashoffset', 0);
@@ -317,7 +322,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
                  
                  didPopRef.current = true;
                  audioService.playPop();
-                 createExplosion(foundNode?.x || 0, foundNode?.y || 0, foundNode?.originalTask.color || '#fff', foundNode?.r || 50);
+                 createExplosion(foundNode?.x || 0, foundNode?.y || 0, foundNode?.originalTask.color || '#fff', foundNode?.r || 50, popColor);
                  
                  shakeEl.classed('charging-shake', false);
                  innerEl.classed('is-popping', true);
@@ -385,12 +390,15 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
                   const popRing = nodeEl.select('.pop-ring');
                   const shakeEl = nodeEl.select('.shake-group');
                   const d = draggingNodeRef.current;
+                  const isCompleted = d.originalTask.completed;
                   
                   if (isOver) {
                        if(navigator.vibrate) navigator.vibrate(20);
                        shakeEl.classed('harsh-shake', true);
+                       const ringColor = isCompleted ? '#22c55e' : '#ef4444';
                        popRing.interrupt()
                            .style('opacity', 1)
+                           .attr('stroke', ringColor)
                            .attr('stroke-dashoffset', 2 * Math.PI * (d.r + 3))
                            .transition()
                            .duration(TRASH_SNAP_DURATION)
@@ -438,6 +446,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
               draggingNodeRef.current = null;
               isDraggingRef.current = false;
               setIsDragging(false);
+              setDraggingCompletedTask(false);
               d.fx = null; d.fy = null;
               try { (event.target as Element).releasePointerCapture(event.pointerId); } catch(e) {}
               return;
@@ -466,6 +475,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           draggingNodeRef.current = null;
           isDraggingRef.current = false;
           setIsDragging(false);
+          setDraggingCompletedTask(false);
           setIsHoveringTrash(false);
           clearHoldTimer();
           
@@ -494,14 +504,14 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     }
   }, [selectedTaskId]);
 
-  const createExplosion = (x: number, y: number, color: string, radius: number) => {
+  const createExplosion = (x: number, y: number, color: string, radius: number, strokeColor: string = '#ef4444') => {
       if (!svgRef.current) return;
       const group = d3.select(svgRef.current).select('.canvas-content');
       const particleColor = color || '#ffffff';
       
       group.append('circle')
           .attr('cx', x).attr('cy', y).attr('r', radius)
-          .attr('fill', 'none').attr('stroke', '#ef4444').attr('stroke-width', 3)
+          .attr('fill', 'none').attr('stroke', strokeColor).attr('stroke-width', 3)
           .style('opacity', 0.6)
           .transition().duration(500).ease(d3.easeExpOut)
           .attr('r', radius * 2).style('opacity', 0).attr('stroke-width', 0).remove();
@@ -530,6 +540,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
       const innerEl = nodeEl.select('.inner-scale');
       const popRing = nodeEl.select('.pop-ring');
+      const popColor = task.completed ? '#22c55e' : '#ef4444';
       
       let x = 0, y = 0;
       const transform = nodeEl.attr('transform');
@@ -540,7 +551,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       
       if (isTrashPop && trashBtnRef.current && svgRef.current) {
           audioService.playPop(); 
-          createExplosion(x, y, task.color, task.size);
+          createExplosion(x, y, task.color, task.size, popColor);
           
           const trashRect = trashBtnRef.current.getBoundingClientRect();
           const t = d3.zoomTransform(svgRef.current);
@@ -561,7 +572,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       if (coords) { x = coords.x; y = coords.y; }
 
       audioService.playPop();
-      createExplosion(x, y, task.color, task.size);
+      createExplosion(x, y, task.color, task.size, popColor);
       
       if (coords) {
           setTimeout(() => {
@@ -569,7 +580,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
              onEditTask(null as any);
           }, 150);
       } else {
-          popRing.style('opacity', 1).transition().duration(200).attr('stroke-dashoffset', 0);
+          popRing.attr('stroke', popColor).style('opacity', 1).transition().duration(200).attr('stroke-dashoffset', 0);
           innerEl.transition().duration(150).ease(d3.easeBackIn.overshoot(2))
             .attr('transform', 'scale(1.2)').style('opacity', 0)
             .on('end', () => {
@@ -582,7 +593,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
 
   const getOffScreenPos = (w: number, h: number) => {
       const angle = Math.random() * Math.PI * 2;
-      const dist = Math.max(w, h); 
+      const dist = Math.max(w, h) * (1.0 + Math.random() * 0.5); 
       return { x: w / 2 + Math.cos(angle) * dist, y: h / 2 + Math.sin(angle) * dist };
   };
 
@@ -602,13 +613,16 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         draggingNodeRef.current = null;
         isDraggingRef.current = false;
         setIsDragging(false);
+        setDraggingCompletedTask(false);
         clearHoldTimer();
     }
 
     const nodes: SimulationNode[] = visibleTasks.map((task) => {
       const existing = oldNodesMap.get(task.id);
       let startX, startY;
-      if (existing) {
+      const completionChanged = existing && existing.originalTask.completed !== task.completed;
+      
+      if (existing && !completionChanged) {
           startX = existing.x; startY = existing.y;
       } else {
           const spawn = getOffScreenPos(width, height);
@@ -683,12 +697,13 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     inner.filter(d => !!d.isCenter).append('foreignObject').attr('class', 'center-btn-container pointer-events-none').append('xhtml:div').attr('class', 'w-full h-full flex items-center justify-center text-white center-icon').html('');
     const allNodes = enterGroup.merge(nodeSelection);
     allNodes.filter(d => !!d.isCenter).raise();
+    allNodes.interrupt().style('opacity', 1); // Critical fix for race condition on rapid toggle
     allNodes.select('.inner-scale').interrupt().style('opacity', d => d.id === selectedTaskId ? 0 : 1).attr('transform', 'scale(1)');
     const isMobile = dimensions.width < 768;
     allNodes.filter(d => !!d.isCenter).select('.center-btn-container').attr('width', isMobile ? 80 : 48).attr('height', isMobile ? 80 : 48).attr('x', isMobile ? -40 : -24).attr('y', isMobile ? -40 : -24);
     allNodes.filter(d => !!d.isCenter).select('.center-icon').style('color', theme === 'dark' ? 'white' : '#475569').html(`<div style="font-family: inherit; font-weight: 200; font-size: ${isMobile ? 56 : 42}px; line-height: 1; margin-top: -4px;">+</div>`);
     allNodes.select('.main-bubble').attr('r', d => d.r).attr('fill', d => { if (d.isCenter) return 'url(#center-glass-gradient)'; if (d.originalTask.completed) return theme === 'dark' ? '#1e293b' : '#cbd5e1'; const color = d.originalTask.color; return color ? `url(#grad-${color.replace('#', '')})` : '#cccccc'; }).attr('stroke', d => d.isCenter ? 'url(#center-glass-stroke)' : 'none').attr('stroke-width', d => d.isCenter ? null : 0).style('filter', d => d.isCenter ? (theme === 'dark' ? 'drop-shadow(0px 8px 32px rgba(0,0,0,0.25))' : 'drop-shadow(0px 8px 24px rgba(0,0,0,0.15))') : (theme === 'dark' ? 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))' : 'drop-shadow(0px 4px 16px rgba(148, 163, 184, 0.4))')).attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`);
-    allNodes.select('.pop-ring').attr('r', d => d.r + 3).attr('stroke', '#ef4444').attr('stroke-dasharray', d => 2 * Math.PI * (d.r + 3)).attr('stroke-dashoffset', d => 2 * Math.PI * (d.r + 3));
+    allNodes.select('.pop-ring').attr('r', d => d.r + 3).attr('stroke', d => d.originalTask.completed ? '#22c55e' : '#ef4444').attr('stroke-dasharray', d => 2 * Math.PI * (d.r + 3)).attr('stroke-dashoffset', d => 2 * Math.PI * (d.r + 3));
     allNodes.select('.text-content foreignObject').attr('width', d => d.r * 1.38).attr('height', d => d.r * 1.38).attr('x', d => -d.r * 0.69).attr('y', d => -d.r * 0.69);
     allNodes.select('.bubble-text-container').html(d => { if (d.isCenter) return ''; const subtaskCount = d.originalTask.subtasks?.length || 0; const completedSubtasks = d.originalTask.subtasks?.filter(s => s.completed).length || 0; let html = `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1;">${d.originalTask.title}</div>`; if (d.originalTask.dueDate) { const date = new Date(d.originalTask.dueDate); const now = new Date(); const isOverdue = date < now && !d.originalTask.completed; const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth(); const dateStr = isToday ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); const dateSize = Math.max(9, d.r * 0.18); const pillColor = isOverdue ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.2)'; html += `<div style="margin-top: 6px;"><div style="display: inline-block; background: ${pillColor}; padding: 2px 8px; border-radius: 99px; font-size: ${dateSize}px; color: white; font-weight: 600; backdrop-filter: blur(4px);">${dateStr}</div></div>`; } if (subtaskCount > 0) html += `<div style="margin-top: 4px; font-size: ${d.r * 0.2}px; opacity: 0.8; font-weight: 600;">${completedSubtasks}/${subtaskCount}</div>`; return html; });
     allNodes.select('.bubble-text').style('color', d => d.originalTask.completed ? (theme === 'dark' ? '#94a3b8' : '#64748b') : '#ffffff').style('font-size', d => { let size = calculateFontSize(d.r, d.originalTask.title); if (d.originalTask.dueDate || (d.originalTask.subtasks && d.originalTask.subtasks.length > 0)) size = size * 0.85; return `${size}px`; }).style('opacity', d => d.originalTask.completed ? 0.6 : 1).style('text-decoration', d => d.originalTask.completed ? 'line-through' : 'none');
@@ -716,8 +731,10 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   }, [dimensions, selectedTaskId]);
 
   const selectedTask = activeTask || tasks.find(t => t.id === selectedTaskId);
-  const showTrashIcon = !selectedTaskId && currentBoardId !== 'COMPLETED';
   
+  const hasCompletedTasks = tasks.some(t => t.completed);
+  const isTrashDisabled = !hasCompletedTasks && !isDragging;
+
   return (
     <div ref={wrapperRef} className="w-full h-full relative bg-slate-50 dark:bg-[#020617] overflow-hidden transition-colors duration-500" onPointerDown={ensureAudio}>
       <style>{`
@@ -738,13 +755,15 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
       </div>
 
       <div className={`absolute inset-0 pointer-events-none z-20 transition-all duration-300 ease-out ${isHoveringTrash ? 'opacity-100' : 'opacity-0'}`}>
-          <div className="absolute inset-0 shadow-[inset_0_-100px_150px_-50px_rgba(239,68,68,0.2)] dark:shadow-[inset_0_-100px_150px_-50px_rgba(239,68,68,0.3)]" />
+          <div className={`absolute inset-0 transition-shadow duration-300 ${draggingCompletedTask ? 'shadow-[inset_0_-100px_150px_-50px_rgba(34,197,94,0.2)] dark:shadow-[inset_0_-100px_150px_-50px_rgba(34,197,94,0.3)]' : 'shadow-[inset_0_-100px_150px_-50px_rgba(239,68,68,0.2)] dark:shadow-[inset_0_-100px_150px_-50px_rgba(239,68,68,0.3)]'}`} />
       </div>
 
       <div className={`absolute top-12 left-1/2 -translate-x-1/2 z-40 pointer-events-none transition-all duration-300 cubic-bezier(0.175, 0.885, 0.32, 1.275) ${isTrashActivated ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-8 scale-90'}`}>
-          <div className="flex items-center gap-2 px-5 py-2.5 bg-red-500 text-white rounded-full shadow-lg shadow-red-500/40 border border-white/20 backdrop-blur-md">
-              <Trash className="w-5 h-5 animate-bounce" />
-              <span className="font-bold tracking-wide text-sm">Release to Pop</span>
+          <div className={`flex items-center gap-2 px-5 py-2.5 rounded-full shadow-lg border border-white/20 backdrop-blur-md transition-colors duration-300 ${draggingCompletedTask ? 'bg-green-500 shadow-green-500/40' : 'bg-red-500 shadow-red-500/40'}`}>
+              {draggingCompletedTask ? <RefreshCcw className="w-5 h-5 animate-spin" style={{ animationDuration: '3s' }} /> : <Trash className="w-5 h-5 animate-bounce" />}
+              <span className="font-bold tracking-wide text-sm whitespace-nowrap text-white">
+                {draggingCompletedTask ? 'Release to Restore' : 'Release to Pop'}
+              </span>
           </div>
       </div>
 
@@ -761,28 +780,37 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
           </>
       )}
 
-      {showTrashIcon && (
+      {!selectedTaskId && (
           <>
-            <div className="absolute bottom-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))] left-8 z-30">
-                <div className="relative group">
-                    <div className={`absolute inset-0 rounded-full blur-xl transition-all duration-500 pointer-events-none ${isHoveringTrash ? 'bg-red-500/40 scale-150' : 'bg-transparent scale-100'}`} />
-                    <button 
+            {!hideTrash && (
+              <div className="absolute bottom-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))] left-8 z-30">
+                  <div className="relative group">
+                      <div className={`absolute inset-0 rounded-full blur-xl transition-all duration-500 pointer-events-none ${isHoveringTrash ? (draggingCompletedTask ? 'bg-green-500/40 scale-150' : 'bg-red-500/40 scale-150') : 'bg-transparent scale-100'}`} />
+                      <button 
                         ref={trashBtnRef} 
-                        onClick={() => canToggleTrash && onToggleShowCompleted()} 
-                        className={`${FAB_BASE_CLASS} relative z-10 transition-all duration-300 ${isDragging ? 'bg-red-500/90 border-red-500/50 text-white shadow-xl shadow-red-500/20' : (isShowingCompleted ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') : '')} ${isTrashActivated ? 'scale-[1.35] rotate-12 bg-red-600 border-red-400' : ''} ${isHoveringTrash && !isTrashActivated ? 'scale-125' : ''} ${!canToggleTrash && !isDragging ? 'opacity-40 cursor-not-allowed grayscale' : ''}`}
-                        title={!canToggleTrash ? "No completed tasks on this board" : "Toggle completed tasks"}
-                    >
-                    <div className={`transition-transform duration-300 relative ${isShowingCompleted && !isHoveringTrash ? 'rotate-[135deg]' : 'rotate-0'}`}>
-                            {isHoveringTrash ? <Trash2 size={24} className={isTrashActivated ? 'animate-bounce' : ''} strokeWidth={isTrashActivated ? 2.5 : 2} /> : <Trash size={22} />}
-                            {isShowingCompleted && !isHoveringTrash && (
-                                <div className="absolute -top-3 left-0 w-full h-full flex justify-center gap-1 pointer-events-none">
-                                <div className="w-1 h-1 bg-current rounded-full opacity-80" /><div className="w-1.5 h-1.5 bg-current rounded-sm opacity-80 translate-y-1" /><div className="w-1 h-1 bg-current rounded-full opacity-80" />
-                                </div>
-                            )}
-                    </div>
-                    </button>
-                </div>
-            </div>
+                        onClick={isTrashDisabled ? undefined : onToggleShowCompleted} 
+                        className={`${FAB_BASE_CLASS} relative z-10 transition-all duration-300 
+                        ${isDragging 
+                            ? (draggingCompletedTask ? 'bg-green-500/90 border-green-500/50 text-white shadow-xl shadow-green-500/20' : 'bg-red-500/90 border-red-500/50 text-white shadow-xl shadow-red-500/20') 
+                            : (isShowingCompleted && !isTrashDisabled ? (theme === 'dark' ? 'bg-white/10 text-white border-white/30' : 'bg-white text-slate-900 border-white/60') : '')} 
+                        ${isTrashActivated 
+                            ? (draggingCompletedTask ? 'scale-[1.35] rotate-[-12deg] bg-green-600 border-green-400' : 'scale-[1.35] rotate-12 bg-red-600 border-red-400') 
+                            : ''} 
+                        ${isHoveringTrash && !isTrashActivated ? 'scale-125' : ''}
+                        ${isTrashDisabled ? 'opacity-40 cursor-default hover:scale-100 active:scale-100 hover:bg-white/40 dark:hover:bg-slate-900/40 hover:text-slate-700 dark:hover:text-white/80' : ''}`}
+                      >
+                      <div className={`transition-transform duration-300 relative ${isShowingCompleted && !isHoveringTrash && !isTrashDisabled ? 'rotate-[135deg]' : 'rotate-0'}`}>
+                              {isHoveringTrash ? (draggingCompletedTask ? <RefreshCcw size={24} className={isTrashActivated ? 'animate-spin' : ''} style={{ animationDuration: '2s' }} /> : <Trash2 size={24} className={isTrashActivated ? 'animate-bounce' : ''} strokeWidth={isTrashActivated ? 2.5 : 2} />) : <Trash size={22} />}
+                              {isShowingCompleted && !isHoveringTrash && !isTrashDisabled && (
+                                  <div className="absolute -top-3 left-0 w-full h-full flex justify-center gap-1 pointer-events-none">
+                                  <div className="w-1 h-1 bg-current rounded-full opacity-80" /><div className="w-1.5 h-1.5 bg-current rounded-sm opacity-80 translate-y-1" /><div className="w-1 h-1 bg-current rounded-full opacity-80" />
+                                  </div>
+                              )}
+                      </div>
+                      </button>
+                  </div>
+              </div>
+            )}
             <div className={`absolute bottom-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))] right-8 z-30 flex flex-col items-center transition-all duration-300 ${(isZoomedIn && !autoScaleActiveUI) ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
                 <div className={`${TOOLTIP_BASE_CLASS} absolute bottom-full mb-3 left-1/2 -translate-x-1/2 pointer-events-none transition-all duration-500 ${showResetTooltip ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
                     Reset View

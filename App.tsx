@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { BubbleCanvas } from './components/BubbleCanvas';
@@ -143,7 +144,7 @@ const App: React.FC = () => {
       y: window.innerHeight / 2
     };
     setTasks(prev => [...prev, newTask]);
-    setEditingTaskId(newTask.id);
+    // setEditingTaskId(newTask.id); // Removed to prevent auto-opening editor
   };
 
   const handleUpdateTask = (updatedTask: Task) => {
@@ -283,7 +284,7 @@ const App: React.FC = () => {
         onToggleShowCompleted={() => setShowCompleted(!showCompleted)}
         isShowingCompleted={showCompleted}
         theme={theme}
-        currentBoardId={currentBoardId}
+        hideTrash={currentBoardId === 'COMPLETED'}
       />
 
       <TaskListView 
