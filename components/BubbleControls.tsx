@@ -28,8 +28,8 @@ const toDateTimeLocal = (isoString?: string) => {
     } catch { return ""; }
 };
 
-// Unified Glass Button Style matching active theme (White Glass / Dark Slate Glass)
-const GLASS_BTN_THEMED = "relative border flex items-center justify-center shrink-0 group outline-none overflow-hidden transition-all duration-200 active:scale-95 bg-white/60 dark:bg-slate-800/60 text-slate-900 dark:text-white border-white/40 dark:border-white/10 shadow-lg hover:bg-white/80 dark:hover:bg-slate-700/80 backdrop-blur-xl font-bold tracking-wide";
+// New Glass Primary Button Style for 'Done'
+const GLASS_BTN_PRIMARY_GLASS = "relative border flex items-center justify-center shrink-0 group outline-none overflow-hidden transition-all duration-200 active:scale-95 bg-white/60 dark:bg-slate-700/60 border-white/50 dark:border-white/10 text-slate-900 dark:text-white shadow-lg hover:bg-white/80 dark:hover:bg-slate-600/80 backdrop-blur-xl font-bold tracking-wide";
 
 export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, startPos, onUpdate, onDelete, onClose, onPop }) => {
   const [isCentered, setIsCentered] = useState(false);
@@ -45,6 +45,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const [hasText, setHasText] = useState(!!task.title);
   const [winDim, setWinDim] = useState({ w: window.innerWidth, h: window.innerHeight });
   const isMobile = winDim.w < 768;
+  const maxHeightRef = useRef(window.innerHeight);
 
   // Board Dropdown State
   const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
@@ -73,11 +74,18 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
   useEffect(() => {
     const handleResize = () => {
-        setWinDim({ w: window.innerWidth, h: window.innerHeight });
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        setWinDim({ w, h });
+        if (h > maxHeightRef.current) maxHeightRef.current = h;
+        if (isEditing && isMobile && h > maxHeightRef.current * 0.85) {
+            if (textRef.current) textRef.current.blur();
+            setIsEditing(false);
+        }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [isEditing, isMobile]);
 
   useEffect(() => { 
       const t = setTimeout(() => setIsCentered(true), 20); 
@@ -88,25 +96,18 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   useEffect(() => { setHasText(!!task.title); }, [task.title]);
 
   useEffect(() => { 
-      if (isEditing && textRef.current) {
-          // Use requestAnimationFrame for cleaner focus transition
-          const frame = requestAnimationFrame(() => {
-              if (textRef.current && document.activeElement !== textRef.current) {
-                  textRef.current.focus();
-                  // Move cursor to end
-                  const range = document.createRange();
-                  const sel = window.getSelection();
-                  if (sel) {
-                      range.selectNodeContents(textRef.current);
-                      range.collapse(false);
-                      sel.removeAllRanges();
-                      sel.addRange(range);
-                  }
-              }
-          });
-          return () => cancelAnimationFrame(frame);
-      }
+      if (isEditing && textRef.current) setTimeout(() => { if(textRef.current) textRef.current.focus(); }, 50);
   }, [isEditing]);
+
+  useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+          if (colorSectionRef.current && !colorSectionRef.current.contains(event.target as Node)) {
+             // Optional close logic
+          }
+      };
+      if (showColorGrid) document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showColorGrid]);
 
   useEffect(() => {
     if (textareaRef.current && showDescription) {
@@ -232,9 +233,8 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter') {
-        if (!e.shiftKey) {
-            e.preventDefault(); 
-            e.currentTarget.blur();
+        if (!isMobile && !e.shiftKey) {
+            e.preventDefault(); e.currentTarget.blur();
         }
     }
   };
@@ -245,10 +245,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const fitScale = bubbleDiameter > safeZone ? safeZone / bubbleDiameter : 1;
 
   const initialStyle: React.CSSProperties = startPos ? { left: `${startPos.x}px`, top: `${startPos.y}px`, transform: `translate(-50%, -50%) scale(${startPos.k})` } : { left: '50%', top: '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
-  
-  // FIXED: Stabilized the top position to 35% on mobile regardless of isEditing state.
-  // This prevents the browser from losing focus target during the layout shift.
-  const centeredStyle: React.CSSProperties = { left: '50%', top: isMobile ? '35%' : '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
+  const centeredStyle: React.CSSProperties = { left: '50%', top: isMobile ? (isEditing ? '40%' : '35%') : '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
 
   const controlsClass = isMobile 
     ? `fixed bottom-0 left-0 w-full px-5 pt-6 pb-[max(2rem,calc(env(safe-area-inset-bottom)+1.5rem))] rounded-t-[2.5rem] z-[60] max-h-[85vh] flex flex-col no-scrollbar ${GLASS_PANEL_CLASS}`
@@ -372,13 +369,6 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     <button onClick={() => setShowDeleteConfirm(true)} className={`${GLASS_BTN_DANGER} ${isMobile ? 'w-14 h-14' : 'p-2.5'}`}><Trash2 size={isMobile ? 22 : 18} /></button>
   );
 
-  const handleTitleAreaClick = (e: React.MouseEvent) => {
-    e.stopPropagation(); 
-    if (interactionReady && !isEditing) {
-        setIsEditing(true);
-    }
-  };
-
   return (
     <div className="absolute inset-0 z-40 overflow-hidden" onPointerUp={handleResizeEnd} onPointerLeave={handleResizeEnd} onPointerDown={() => audioService.resume()}>
       <div className={`absolute inset-0 bg-slate-200/40 dark:bg-black/40 backdrop-blur-[4px] transition-opacity duration-300 ${isPopping ? 'opacity-0' : 'opacity-100'}`} onClick={onClose} />
@@ -393,26 +383,15 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                 <div className={TOOLTIP_BASE_CLASS}>Tap to edit</div><div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-white/90 dark:border-t-slate-800/90 absolute left-1/2 -translate-x-1/2 -bottom-[6px]" />
              </div>
           )}
-          <div ref={bubbleRef} onClick={handleTitleAreaClick} className={`bubble-main pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center cursor-text ${isResizing ? 'transition-none' : 'transition-all duration-300'}`} style={{ width: bubbleDiameter, height: bubbleDiameter, background: bubbleGradient, boxShadow: '0 15px 30px rgba(0,0,0,0.3)', ...(isPopping ? { transform: 'translate(-50%, -50%) scale(1.2)', opacity: 0 } : {}) }}>
+          <div ref={bubbleRef} onClick={(e) => { e.stopPropagation(); if (interactionReady) { setIsEditing(true); setTimeout(() => textRef.current?.focus(), 0); } }} className={`bubble-main pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center cursor-text ${isResizing ? 'transition-none' : 'transition-all duration-300'}`} style={{ width: bubbleDiameter, height: bubbleDiameter, background: bubbleGradient, boxShadow: '0 15px 30px rgba(0,0,0,0.3)', ...(isPopping ? { transform: 'translate(-50%, -50%) scale(1.2)', opacity: 0 } : {}) }}>
               <div className="w-[65%] h-[65%] flex items-center justify-center relative">
                   {isPlaceholderVisible && <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"><span className="placeholder-text text-white font-bold italic opacity-50 text-center leading-[1.1]" style={{ fontSize: `${currentFontSize}px` }}>Task Name</span></div>}
                   <div 
                     ref={textRef} 
                     contentEditable={isEditing} 
                     suppressContentEditableWarning 
-                    inputMode="text"
-                    spellCheck={false}
-                    onBlur={(e) => { 
-                        setIsEditing(false); 
-                        onUpdate({...task, title: e.currentTarget.innerText.trim()}); 
-                    }} 
-                    onInput={(e) => { 
-                        setHasText(!!e.currentTarget.innerText); 
-                        const newSize = calculateFontSize(currentSizeRef.current, e.currentTarget.innerText || 'Task Name'); 
-                        e.currentTarget.style.fontSize = `${newSize}px`; 
-                        const placeholderEl = viewportRef.current?.querySelector('.placeholder-text') as HTMLElement; 
-                        if (placeholderEl) placeholderEl.style.fontSize = `${newSize}px`; 
-                    }} 
+                    onBlur={(e) => { setIsEditing(false); onUpdate({...task, title: e.currentTarget.innerText.trim()}); }} 
+                    onInput={(e) => { setHasText(!!e.currentTarget.innerText); const newSize = calculateFontSize(currentSizeRef.current, e.currentTarget.innerText || 'Task Name'); e.currentTarget.style.fontSize = `${newSize}px`; const placeholderEl = viewportRef.current?.querySelector('.placeholder-text') as HTMLElement; if (placeholderEl) placeholderEl.style.fontSize = `${newSize}px`; }} 
                     onKeyDown={handleKeyDown} 
                     className={`bubble-text-inner w-full text-center text-white font-bold outline-none pointer-events-auto drop-shadow-lg transition-opacity duration-200 z-20`} 
                     style={{ fontSize: currentFontSize, overflowWrap: 'anywhere', wordBreak: 'break-word', whiteSpace: 'pre-wrap', lineHeight: 1.1, minWidth: '20px' }}
@@ -446,7 +425,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                             </div>
                             <div className="flex items-center gap-3 pb-1">
                                 {renderDeleteButton()}
-                                <button onClick={onClose} className={`flex-1 h-14 rounded-2xl ${GLASS_BTN_THEMED} gap-2`}><Check size={20} /><span>Done</span></button>
+                                <button onClick={onClose} className={`flex-1 h-14 rounded-2xl ${GLASS_BTN_PRIMARY_GLASS} flex items-center justify-center gap-2`}><Check size={20} /><span>Done</span></button>
                             </div>
                         </div>
                     </>
@@ -474,7 +453,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                             </div>
                             <div className="flex items-center gap-3">
                                 {renderDeleteButton()}
-                                <button onClick={onClose} className={`h-10 px-5 rounded-xl ${GLASS_BTN_THEMED} gap-2`}>
+                                <button onClick={onClose} className={`h-10 px-5 rounded-xl ${GLASS_BTN_PRIMARY_GLASS} flex items-center justify-center gap-2`}>
                                     <Check size={18} /><span>Done</span>
                                 </button>
                             </div>
@@ -488,7 +467,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     )}
     {isMobile && isEditing && (
         <button 
-           className={`fixed bottom-6 right-6 z-[70] w-14 h-14 rounded-full shadow-2xl ${GLASS_BTN_THEMED}`}
+           className="fixed bottom-6 right-6 z-[70] bg-white/60 dark:bg-slate-800/60 text-slate-900 dark:text-white backdrop-blur-xl w-14 h-14 rounded-full shadow-2xl border border-white/40 dark:border-white/10 flex items-center justify-center animate-in fade-in zoom-in duration-300 pointer-events-auto active:scale-90 transition-all hover:bg-white/80 dark:hover:bg-slate-700/60"
            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); textRef.current?.blur(); }}
            aria-label="Close keyboard"
         >
