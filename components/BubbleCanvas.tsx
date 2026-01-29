@@ -698,9 +698,9 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     // Main Bubble
     shaker.append('circle').attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`).attr('stroke-width', 0);
     
-    // REMOVED: Circular Progress Rings
-
-    shaker.append('g').attr('class', 'text-content pointer-events-none').append('foreignObject').append('xhtml:div').attr('class', 'w-full h-full flex flex-col items-center justify-center text-center overflow-visible bubble-text-container').html(d => `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1;"></div>`);
+    // Text container using foreignObject
+    shaker.append('g').attr('class', 'text-content pointer-events-none').append('foreignObject').append('xhtml:div').attr('class', 'w-full h-full flex flex-col items-center justify-center text-center overflow-visible bubble-text-container').html(d => `<div class="bubble-text font-bold leading-tight select-none px-0.5" style="overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap; line-height: 1.1; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"></div>`);
+    
     inner.filter(d => !!d.isCenter).append('foreignObject').attr('class', 'center-btn-container pointer-events-none').append('xhtml:div').attr('class', 'w-full h-full flex items-center justify-center text-white center-icon').html('');
     const allNodes = enterGroup.merge(nodeSelection);
     allNodes.filter(d => !!d.isCenter).raise();
@@ -713,8 +713,6 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     allNodes.select('.pop-ring').attr('r', d => d.r + 3).attr('stroke', d => d.originalTask.completed ? '#22c55e' : '#ef4444').attr('stroke-dasharray', d => 2 * Math.PI * (d.r + 3)).attr('stroke-dashoffset', d => 2 * Math.PI * (d.r + 3));
     allNodes.select('.text-content foreignObject').attr('width', d => d.r * 1.6).attr('height', d => d.r * 1.6).attr('x', d => -d.r * 0.8).attr('y', d => -d.r * 0.8);
 
-    // REMOVED: D3 Logic to update progress rings
-    
     // UPDATE: Redesigned Content Layout with Unified "Pill"
     allNodes.select('.bubble-text-container').html(d => { 
         if (d.isCenter) return ''; 
@@ -726,7 +724,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         const hasMetadata = d.originalTask.dueDate || d.originalTask.description || (d.originalTask.subtasks && d.originalTask.subtasks.length > 0);
         const titleStyle = hasMetadata ? 'margin-bottom: 20px;' : ''; 
         
-        html += `<div class="bubble-text font-bold leading-tight select-none drop-shadow-lg px-0.5" style="overflow-wrap: normal; word-break: normal; hyphens: none; white-space: pre-line; line-height: 1.1; ${titleStyle}">${d.originalTask.title}</div>`; 
+        html += `<div class="bubble-text font-bold leading-tight select-none px-0.5" style="overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap; line-height: 1.1; text-shadow: 0 1px 2px rgba(0,0,0,0.3); ${titleStyle}">${d.originalTask.title}</div>`; 
         
         // Unified Metadata Pill (Bottom)
         if (hasMetadata && d.r > 40) { // Only show on bubbles large enough

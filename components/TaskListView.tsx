@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from
 import { createPortal } from 'react-dom';
 import { Task } from '../types';
 import { ArrowLeft, CheckSquare, Square, List, CalendarClock, CheckCircle2, Pencil, GripVertical, Check } from 'lucide-react';
-import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE } from '../constants';
+import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, GLASS_BTN_INACTIVE } from '../constants';
 
 interface TaskListViewProps {
   tasks: Task[];
@@ -114,18 +114,13 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
       const target = e.target as HTMLElement;
       const isButton = target.closest('button');
       if (isButton) return;
-
-      // On touch devices, only allow dragging via the grip handle to prevent scroll interference
       if (e.pointerType === 'touch') {
           const isHandle = target.closest('.drag-handle');
           if (!isHandle) return;
       }
-
       const row = e.currentTarget as HTMLElement;
-      row.setPointerCapture(e.pointerId); // Crucial: prevents browser from hijacking event stream (scrolling)
-      
+      row.setPointerCapture(e.pointerId);
       const rect = row.getBoundingClientRect();
-      
       dragRef.current = { 
           active: true, 
           id: task.id, 
@@ -133,14 +128,12 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
           startPointerPos: { x: e.clientX, y: e.clientY },
           hasMoved: false
       };
-      
-      setIsDragging(false); // Reset on every down
+      setIsDragging(false);
       itemsRef.current = [...activeTasks];
       setDraggedTaskId(task.id);
       setDragItemDim({ width: rect.width, height: rect.height });
       setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top });
       setPointerPos({ x: e.clientX, y: e.clientY });
-
       window.addEventListener('pointermove', onPointerMove);
       window.addEventListener('pointerup', onPointerUp);
       window.addEventListener('pointercancel', onPointerUp);
@@ -148,7 +141,6 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
 
   const onPointerMove = useCallback((e: PointerEvent) => {
       if (!dragRef.current.active) return;
-      
       const start = dragRef.current.startPointerPos;
       if (start && !dragRef.current.hasMoved) {
           const dx = e.clientX - start.x;
@@ -160,9 +152,8 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
               autoScrollFrame.current = requestAnimationFrame(performAutoScroll);
           }
       }
-
       if (dragRef.current.hasMoved) {
-          e.preventDefault(); // Prevent default touch actions while dragging
+          e.preventDefault();
           setPointerPos({ x: e.clientX, y: e.clientY });
           dragRef.current.lastPointerY = e.clientY;
           if (listRef.current) {
@@ -218,14 +209,11 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
   const onPointerUp = useCallback(() => {
       const moved = dragRef.current.hasMoved;
       const draggedId = dragRef.current.id;
-      
       cancelAnimationFrame(autoScrollFrame.current);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
-      
       if (!dragRef.current.active) return;
-      
       if (moved) {
           const itemEl = listRef.current?.querySelector(`[data-task-id="${draggedId}"]`) as HTMLElement;
           if (itemEl) {
@@ -237,7 +225,6 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
               finalizeDrop();
           }
       } else {
-          // Tap handling
           setIsDragging(false);
           setDraggedTaskId(null);
           dragRef.current.active = false;
@@ -274,22 +261,14 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
                     )}
                 </div>
             </div>
-            
-            {/* Expanded Subtasks View */}
             {subtasks.length > 0 && !task.completed && (
                 <div className="mt-3 ml-10 flex flex-col gap-1.5 border-l-2 border-slate-200 dark:border-white/10 pl-3">
                     {subtasks.map(sub => (
-                        <div 
-                            key={sub.id} 
-                            onClick={(e) => { e.stopPropagation(); handleToggleSubtask(task, sub.id); }}
-                            className="flex items-center gap-2.5 group/sub cursor-pointer hover:bg-white/10 p-1 -ml-1 rounded-md transition-colors"
-                        >
+                        <div key={sub.id} onClick={(e) => { e.stopPropagation(); handleToggleSubtask(task, sub.id); }} className="flex items-center gap-2.5 group/sub cursor-pointer hover:bg-white/10 p-1 -ml-1 rounded-md transition-colors">
                              <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-colors ${sub.completed ? 'bg-slate-400 border-slate-400 dark:bg-slate-500 dark:border-slate-500' : 'border-slate-300 dark:border-white/30'}`}>
                                  {sub.completed && <Check size={10} className="text-white" strokeWidth={3} />}
                              </div>
-                             <span className={`text-xs truncate transition-all ${sub.completed ? 'text-slate-400 line-through' : 'text-slate-600 dark:text-slate-300'}`}>
-                                 {sub.title}
-                             </span>
+                             <span className={`text-xs truncate transition-all ${sub.completed ? 'text-slate-400 line-through' : 'text-slate-600 dark:text-slate-300'}`}>{sub.title}</span>
                         </div>
                     ))}
                 </div>
@@ -305,7 +284,7 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
       <div className={`fixed inset-0 bg-slate-200/40 dark:bg-black/40 backdrop-blur-[2px] z-[60] transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={onClose} />
       <div className={`fixed top-0 right-0 h-full w-full sm:w-[420px] shadow-2xl z-[70] transform transition-transform duration-500 cubic-bezier(0.16, 1, 0.3, 1) flex flex-col bg-white/40 dark:bg-slate-900/30 backdrop-blur-3xl border-l border-white/60 dark:border-white/10 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="relative px-6 py-6 border-b border-slate-200 dark:border-white/10 flex items-center gap-4 bg-white/20 dark:bg-white/[0.02]">
-          <button onClick={onClose} className="p-2 -ml-2 rounded-full transition-colors active:scale-90 text-slate-400 hover:text-slate-800"><ArrowLeft size={20} /></button>
+          <button onClick={onClose} className={`${GLASS_BTN_INACTIVE} rounded-full w-10 h-10 -ml-2 border-0 bg-transparent dark:bg-transparent hover:bg-white/40 dark:hover:bg-white/10`}><ArrowLeft size={20} /></button>
           <div className="flex-1">
              <h2 className="text-xl font-bold text-slate-900 dark:text-white/90">Prioritize Tasks</h2>
              <p className="text-[10px] text-slate-500 dark:text-white/40 font-medium">Drag the handle to reorder</p>
@@ -315,18 +294,7 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
         <div ref={scrollContainerRef} className="relative flex-1 overflow-y-auto p-4 custom-scrollbar">
           <div ref={listRef} className="space-y-2 pb-24 min-h-[50px]">
              {activeTasks.map((task) => (
-                <div 
-                    key={task.id} 
-                    data-task-id={task.id} 
-                    onPointerDown={(e) => handlePointerDown(e, task)} 
-                    className={`task-row group cursor-grab active:cursor-grabbing transition-transform ${task.id === draggedTaskId && isDragging ? 'opacity-0 pointer-events-none' : 'opacity-100 hover:scale-[1.01]'}`} 
-                    onClick={() => { 
-                        if(!isDragging) { 
-                            onEditTask(task); 
-                            onClose(); 
-                        } 
-                    }}
-                >
+                <div key={task.id} data-task-id={task.id} onPointerDown={(e) => handlePointerDown(e, task)} className={`task-row group cursor-grab active:cursor-grabbing transition-transform ${task.id === draggedTaskId && isDragging ? 'opacity-0 pointer-events-none' : 'opacity-100 hover:scale-[1.01]'}`} onClick={() => { if(!isDragging) { onEditTask(task); onClose(); } }}>
                     {renderTaskContent(task)}
                 </div>
              ))}

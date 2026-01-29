@@ -5,7 +5,7 @@ import { BubbleCanvas } from './components/BubbleCanvas';
 import { Sidebar } from './components/Sidebar';
 import { TaskListView } from './components/TaskListView';
 import { Task, Board, User } from './types';
-import { COLORS, FAB_BASE_CLASS, GLASS_PANEL_CLASS, MENU_ITEM_CLASS, MENU_ITEM_ACTIVE_CLASS, MENU_ITEM_INACTIVE_CLASS } from './constants';
+import { COLORS, FAB_BASE_CLASS, GLASS_PANEL_CLASS, GLASS_MENU_ITEM, GLASS_MENU_ITEM_ACTIVE, GLASS_MENU_ITEM_INACTIVE, GLASS_BTN_INACTIVE } from './constants';
 import { LayoutList } from 'lucide-react';
 import { notificationService } from './services/notificationService';
 
@@ -127,7 +127,7 @@ const App: React.FC = () => {
       y: window.innerHeight / 2
     };
     setTasks(prev => [...prev, newTask]);
-    // setEditingTaskId(newTask.id); // Removed to prevent auto-opening editor
+    setEditingTaskId(newTask.id); 
   };
 
   const handleUpdateTask = (updatedTask: Task) => {
@@ -309,7 +309,7 @@ const App: React.FC = () => {
                                         setCurrentBoardId(b.id); 
                                         setIsBoardMenuOpen(false); 
                                     }}
-                                    className={`${MENU_ITEM_CLASS} ${(currentBoardId === b.id || dragHoveredBoardId === b.id) ? MENU_ITEM_ACTIVE_CLASS : MENU_ITEM_INACTIVE_CLASS}`}
+                                    className={`${GLASS_MENU_ITEM} justify-center ${(currentBoardId === b.id || dragHoveredBoardId === b.id) ? GLASS_MENU_ITEM_ACTIVE : GLASS_MENU_ITEM_INACTIVE}`}
                                 >
                                     {b.name}
                                 </button>
@@ -322,8 +322,9 @@ const App: React.FC = () => {
                                     e.stopPropagation();
                                     setCurrentBoardId('ALL'); 
                                     setIsBoardMenuOpen(false); 
+                                    setShowCompleted(false);
                                 }}
-                                className={`${MENU_ITEM_CLASS} ${(currentBoardId === 'ALL' || dragHoveredBoardId === 'ALL') ? MENU_ITEM_ACTIVE_CLASS : MENU_ITEM_INACTIVE_CLASS}`}
+                                className={`${GLASS_MENU_ITEM} justify-center ${(currentBoardId === 'ALL' || dragHoveredBoardId === 'ALL') ? GLASS_MENU_ITEM_ACTIVE : GLASS_MENU_ITEM_INACTIVE}`}
                             >
                                 All Tasks
                             </button>
@@ -335,7 +336,7 @@ const App: React.FC = () => {
                                     setCurrentBoardId('COMPLETED'); 
                                     setIsBoardMenuOpen(false); 
                                 }}
-                                className={`${MENU_ITEM_CLASS} ${(currentBoardId === 'COMPLETED' || dragHoveredBoardId === 'COMPLETED') ? MENU_ITEM_ACTIVE_CLASS : MENU_ITEM_INACTIVE_CLASS}`}
+                                className={`${GLASS_MENU_ITEM} justify-center ${(currentBoardId === 'COMPLETED' || dragHoveredBoardId === 'COMPLETED') ? GLASS_MENU_ITEM_ACTIVE : GLASS_MENU_ITEM_INACTIVE}`}
                             >
                                 Completed
                             </button>

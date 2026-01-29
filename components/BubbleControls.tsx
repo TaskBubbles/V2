@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { v4 as uuidv4 } from 'uuid';
 import { Task, Board, Subtask } from '../types';
-import { COLOR_GROUPS, MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, calculateFontSize, GLASS_PANEL_CLASS, TOOLTIP_BASE_CLASS } from '../constants';
+import { COLOR_GROUPS, MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, calculateFontSize, GLASS_PANEL_CLASS, TOOLTIP_BASE_CLASS, GLASS_BTN_INACTIVE, GLASS_BTN_ACTIVE, GLASS_BTN_BASE, GLASS_BTN_DANGER, GLASS_BTN_PRIMARY, GLASS_MENU_ITEM, GLASS_MENU_ITEM_ACTIVE, GLASS_MENU_ITEM_INACTIVE } from '../constants';
 import { Trash2, Calendar, AlertTriangle, X, ChevronDown, Check, ChevronUp, AlignLeft, Plus, Square, CheckSquare, ListChecks, Palette } from 'lucide-react';
 import { audioService } from '../services/audioService';
 
@@ -42,6 +42,16 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const [hasText, setHasText] = useState(!!task.title);
   const [winDim, setWinDim] = useState({ w: window.innerWidth, h: window.innerHeight });
   const isMobile = winDim.w < 768;
+  const maxHeightRef = useRef(window.innerHeight);
+
+  // Board Dropdown State
+  const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
+  const [dragHoveredBoardId, setDragHoveredBoardId] = useState<string | null>(null);
+  const boardMenuRef = useRef<HTMLDivElement>(null);
+  const boardButtonRef = useRef<HTMLButtonElement>(null);
+  const menuWasOpenOnDown = useRef(false);
+  const dragStartRef = useRef<{ x: number, y: number } | null>(null);
+  const isDraggingBoardRef = useRef(false);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -60,10 +70,19 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const currentBoardName = boards.find(b => b.id === task.boardId)?.name || 'Select Board';
 
   useEffect(() => {
-    const handleResize = () => setWinDim({ w: window.innerWidth, h: window.innerHeight });
+    const handleResize = () => {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        setWinDim({ w, h });
+        if (h > maxHeightRef.current) maxHeightRef.current = h;
+        if (isEditing && isMobile && h > maxHeightRef.current * 0.85) {
+            if (textRef.current) textRef.current.blur();
+            setIsEditing(false);
+        }
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [isEditing, isMobile]);
 
   useEffect(() => { 
       const t = setTimeout(() => setIsCentered(true), 20); 
@@ -73,12 +92,14 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
   useEffect(() => { setHasText(!!task.title); }, [task.title]);
 
-  useEffect(() => { if (isEditing && textRef.current) textRef.current.focus(); }, [isEditing]);
+  useEffect(() => { 
+      if (isEditing && textRef.current) setTimeout(() => { if(textRef.current) textRef.current.focus(); }, 50);
+  }, [isEditing]);
 
   useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {
           if (colorSectionRef.current && !colorSectionRef.current.contains(event.target as Node)) {
-             // Logic to close if needed, but we rely on explicit toggle mostly now
+             // Optional close logic
           }
       };
       if (showColorGrid) document.addEventListener('mousedown', handleClickOutside);
@@ -97,6 +118,19 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   }, [showSubtasks]);
 
   useEffect(() => { if (!isResizing) currentSizeRef.current = task.size; }, [task.size, isResizing]);
+
+  // Board Dropdown Click Outside
+  useEffect(() => {
+    const handleOutsideClick = (e: PointerEvent) => {
+        if (!isBoardMenuOpen) return;
+        const target = e.target as Node;
+        if (!boardMenuRef.current?.contains(target) && !boardButtonRef.current?.contains(target)) {
+            setIsBoardMenuOpen(false);
+        }
+    };
+    if (isBoardMenuOpen) document.addEventListener('pointerdown', handleOutsideClick, true);
+    return () => document.removeEventListener('pointerdown', handleOutsideClick, true);
+  }, [isBoardMenuOpen]);
 
   const handleResizeStart = (e: React.PointerEvent) => {
     e.stopPropagation(); e.preventDefault(); setIsResizing(true); setIsEditing(false);
@@ -142,6 +176,43 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     }
   };
 
+  const handleBoardPointerDown = (e: React.PointerEvent) => {
+    menuWasOpenOnDown.current = isBoardMenuOpen;
+    setIsBoardMenuOpen(true);
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    isDraggingBoardRef.current = false;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handleBoardPointerMove = (e: React.PointerEvent) => {
+    if (!dragStartRef.current) return;
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    if (!isDraggingBoardRef.current && Math.hypot(dx, dy) > 10) isDraggingBoardRef.current = true;
+    if (isDraggingBoardRef.current) {
+        const elements = document.elementsFromPoint(e.clientX, e.clientY);
+        const boardEl = elements.find(el => (el as HTMLElement).dataset.boardId) as HTMLElement | undefined;
+        if (boardEl) setDragHoveredBoardId(boardEl.dataset.boardId || null);
+        else setDragHoveredBoardId(null);
+    }
+  };
+
+  const handleBoardPointerUp = (e: React.PointerEvent) => {
+    if (isDraggingBoardRef.current && dragHoveredBoardId) {
+        onUpdate({ ...task, boardId: dragHoveredBoardId });
+        setIsBoardMenuOpen(false);
+    }
+    dragStartRef.current = null;
+    isDraggingBoardRef.current = false;
+    setDragHoveredBoardId(null);
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+  };
+
+  const handleBoardClick = (e: React.MouseEvent) => {
+    if (isDraggingBoardRef.current) return;
+    if (menuWasOpenOnDown.current) setIsBoardMenuOpen(false);
+  };
+
   const handleAddSubtask = (e: React.FormEvent) => {
       e.preventDefault(); if (!newSubtaskTitle.trim()) return;
       const newSubtask: Subtask = { id: uuidv4(), title: newSubtaskTitle.trim(), completed: false };
@@ -157,20 +228,28 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
       onUpdate({ ...task, subtasks: (task.subtasks || []).filter(s => s.id !== id) });
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter') {
+        if (!isMobile && !e.shiftKey) {
+            e.preventDefault(); e.currentTarget.blur();
+        }
+    }
+  };
+
   const ringDiameter = task.size * 2 + 60;
   const bubbleDiameter = task.size * 2;
   const safeZone = Math.min(winDim.w, winDim.h) * 0.85; 
   const fitScale = bubbleDiameter > safeZone ? safeZone / bubbleDiameter : 1;
 
   const initialStyle: React.CSSProperties = startPos ? { left: `${startPos.x}px`, top: `${startPos.y}px`, transform: `translate(-50%, -50%) scale(${startPos.k})` } : { left: '50%', top: '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
-  const centeredStyle: React.CSSProperties = { left: '50%', top: isMobile ? '35%' : '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
+  const centeredStyle: React.CSSProperties = { left: '50%', top: isMobile ? (isEditing ? '40%' : '35%') : '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
 
   const controlsClass = isMobile 
-    ? `fixed bottom-0 left-0 w-full px-5 pt-6 pb-[max(2rem,calc(env(safe-area-inset-bottom)+1.5rem))] rounded-t-[2.5rem] z-[60] max-h-[85vh] overflow-y-auto no-scrollbar ${GLASS_PANEL_CLASS}`
+    ? `fixed bottom-0 left-0 w-full px-5 pt-6 pb-[max(2rem,calc(env(safe-area-inset-bottom)+1.5rem))] rounded-t-[2.5rem] z-[60] max-h-[85vh] flex flex-col no-scrollbar ${GLASS_PANEL_CLASS}`
     : `absolute left-1/2 -translate-x-1/2 z-50 bottom-12 min-w-[360px] max-w-[95vw] rounded-[2rem] p-5 ${GLASS_PANEL_CLASS}`;
   
   const controlsTransition = isMobile 
-    ? { transform: isCentered ? 'translateY(0)' : 'translateY(100%)', transition: 'transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)' }
+    ? { transform: isCentered && !isEditing ? 'translateY(0)' : 'translateY(150%)', transition: 'transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)' }
     : { opacity: isCentered ? 1 : 0, transform: isCentered ? 'translate(-50%, 0)' : 'translate(-50%, 20px)', transition: 'all 0.4s ease-out' };
 
   const renderResizeHandle = (className: string, cursor: string) => (
@@ -214,23 +293,48 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   );
 
   const renderBoardSelector = () => (
-    <div className={`relative group shrink-0 ${isMobile ? 'flex-1' : ''}`}>
-        <div className="px-5 py-2.5 rounded-full backdrop-blur-xl border shadow-lg flex items-center justify-between gap-2 transition-all hover:scale-[1.02] active:scale-95 touch-none bg-white/30 dark:bg-slate-900/40 border-white/40 dark:border-white/10 hover:bg-white/50 dark:hover:bg-slate-900/60 text-slate-900 dark:text-white cursor-pointer group-hover:text-black dark:group-hover:text-white">
-            <span className="text-sm font-bold truncate max-w-[120px]">{currentBoardName}</span><ChevronDown size={14} className="text-slate-500 dark:text-white/40 group-hover:text-slate-700 dark:group-hover:text-white/90" />
+    <div className={`relative group shrink-0 z-20 ${isMobile ? 'flex-1' : 'w-full'}`}>
+        <div 
+           ref={boardMenuRef}
+           role="menu"
+           aria-label="Select board"
+           className={`absolute bottom-full left-0 mb-3 w-48 rounded-2xl overflow-hidden transition-all duration-300 origin-bottom z-50 ${GLASS_PANEL_CLASS}
+           ${isBoardMenuOpen ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-90 translate-y-4 pointer-events-none'}`}
+        >
+            <div className="p-1.5 flex flex-col gap-0.5">
+                {boards.map(b => (
+                    <button key={b.id} data-board-id={b.id} role="menuitem" onClick={(e) => { e.stopPropagation(); onUpdate({ ...task, boardId: b.id }); setIsBoardMenuOpen(false); }} className={`${GLASS_MENU_ITEM} ${(task.boardId === b.id || dragHoveredBoardId === b.id) ? GLASS_MENU_ITEM_ACTIVE : GLASS_MENU_ITEM_INACTIVE}`}>
+                        {b.name}
+                    </button>
+                ))}
+            </div>
         </div>
-        <select value={task.boardId} onChange={(e) => onUpdate({ ...task, boardId: e.target.value })} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full">{boards.map(b => (<option key={b.id} value={b.id}>{b.name}</option>))}</select>
+
+        <button 
+           ref={boardButtonRef}
+           onPointerDown={handleBoardPointerDown}
+           onPointerMove={handleBoardPointerMove}
+           onPointerUp={handleBoardPointerUp}
+           onClick={handleBoardClick}
+           aria-haspopup="menu"
+           aria-expanded={isBoardMenuOpen}
+           className={`w-full px-5 py-2.5 ${GLASS_BTN_INACTIVE} !justify-between gap-2 cursor-pointer group-hover:text-black dark:group-hover:text-white`}
+        >
+            <span className="text-sm font-bold truncate max-w-[120px] text-left flex-1">{currentBoardName}</span>
+            <ChevronDown size={14} className={`text-slate-500 dark:text-white/40 transition-transform duration-300 ${isBoardMenuOpen ? 'rotate-180' : ''}`} />
+        </button>
     </div>
   );
 
   const renderToolsGroup = () => (
     <div className="flex items-center gap-2 shrink-0">
-        <button type="button" className={`relative px-3 py-2.5 rounded-xl border transition-all flex items-center justify-center shrink-0 group outline-none overflow-hidden ${task.dueDate ? 'bg-blue-100 dark:bg-white/20 border-blue-200 dark:border-white/30 text-blue-800 dark:text-white' : 'bg-white/20 dark:bg-white/5 border-white/30 dark:border-white/5 text-slate-500 dark:text-white/40 hover:bg-white/40 dark:hover:bg-white/10 hover:text-slate-800 dark:hover:text-white'}`}>
+        <button type="button" className={`px-3 py-2.5 ${task.dueDate ? GLASS_BTN_ACTIVE : GLASS_BTN_INACTIVE}`}>
             <div className="flex items-center gap-1.5 pointer-events-none relative z-0"><Calendar size={18} />{task.dueDate && !isMobile && (<span className="ml-0.5 text-[10px] font-bold whitespace-nowrap">{new Date(task.dueDate).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })} {new Date(task.dueDate).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>)}</div>
             <input ref={dateInputRef} type="datetime-local" className="absolute inset-0 opacity-0 w-full h-full z-10 cursor-pointer date-trigger" value={toDateTimeLocal(task.dueDate)} onChange={(e) => onUpdate({ ...task, dueDate: e.target.value ? new Date(e.target.value).toISOString() : undefined })} onClick={(e) => { e.stopPropagation(); try { if (e.currentTarget && 'showPicker' in e.currentTarget) e.currentTarget.showPicker(); } catch (err) {} }} />
             <style>{`.date-trigger::-webkit-calendar-picker-indicator { position: absolute; top: 0; left: 0; width: 100%; height: 100%; padding: 0; margin: 0; opacity: 0; cursor: pointer; }`}</style>
         </button>
-        <button onClick={() => { setShowDescription(!showDescription); if (!showDescription) setTimeout(() => textareaRef.current?.focus(), 50); }} className={`relative px-3 py-2.5 rounded-xl border transition-all flex items-center justify-center cursor-pointer shrink-0 ${(showDescription || task.description) ? 'bg-blue-100 dark:bg-white/20 border-blue-200 dark:border-white/30 text-blue-800 dark:text-white' : 'bg-white/20 dark:bg-white/5 border-white/30 dark:border-white/5 text-slate-500 dark:text-white/40 hover:bg-white/40 dark:hover:bg-white/10 hover:text-slate-800 dark:hover:text-white'}`}><AlignLeft size={18} /></button>
-        <button onClick={() => setShowSubtasks(!showSubtasks)} className={`relative px-3 py-2.5 rounded-xl border transition-all flex items-center justify-center cursor-pointer shrink-0 ${(showSubtasks || (task.subtasks && task.subtasks.length > 0)) ? 'bg-blue-100 dark:bg-white/20 border-blue-200 dark:border-white/30 text-blue-800 dark:text-white' : 'bg-white/20 dark:bg-white/5 border-white/30 dark:border-white/5 text-slate-500 dark:text-white/40 hover:bg-white/40 dark:hover:bg-white/10 hover:text-slate-800 dark:hover:text-white'}`}><ListChecks size={18} />{subtasks.length > 0 && <span className="ml-1 text-[10px] font-bold">{subtasks.filter(s => s.completed).length}/{subtasks.length}</span>}</button>
+        <button onClick={() => { setShowDescription(!showDescription); if (!showDescription) setTimeout(() => textareaRef.current?.focus(), 50); }} className={`px-3 py-2.5 ${(showDescription || task.description) ? GLASS_BTN_ACTIVE : GLASS_BTN_INACTIVE}`}><AlignLeft size={18} /></button>
+        <button onClick={() => setShowSubtasks(!showSubtasks)} className={`px-3 py-2.5 ${(showSubtasks || (task.subtasks && task.subtasks.length > 0)) ? GLASS_BTN_ACTIVE : GLASS_BTN_INACTIVE}`}><ListChecks size={18} />{subtasks.length > 0 && <span className="ml-1 text-[10px] font-bold">{subtasks.filter(s => s.completed).length}/{subtasks.length}</span>}</button>
     </div>
   );
 
@@ -239,7 +343,6 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
         <div className={`${showColorGrid ? 'flex opacity-100 pointer-events-auto scale-100' : 'hidden opacity-0 pointer-events-none scale-95'} ${isMobile ? 'static flex-col gap-3 w-full mb-4 animate-in slide-in-from-bottom-2 fade-in' : 'absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 flex-col gap-2 p-2 bg-white/30 dark:bg-slate-900/40 backdrop-blur-3xl border border-white/40 dark:border-white/10 rounded-2xl shadow-2xl origin-bottom transition-all duration-300'}`} style={{ width: isMobile ? '100%' : 'max-content' }}>
                 <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-3 justify-center'}`}>
                     {COLOR_GROUPS.map((group, idx) => {
-                        // Replace the last item (top right) with the Rainbow Button
                         if (idx === COLOR_GROUPS.length - 1) {
                             return (
                                 <label key="custom-color" className={`rounded-full transition-transform hover:scale-110 relative flex items-center justify-center cursor-pointer overflow-hidden bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500 ${isMobile ? 'w-10 h-10' : 'w-7 h-7'}`}>
@@ -255,18 +358,18 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                 </div>
                 <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-3 justify-center'}`}>{COLOR_GROUPS.map((group) => (<button key={`${group.name}-dark`} onClick={() => onUpdate({ ...task, color: group.shades[2] })} className={`rounded-full transition-transform hover:scale-110 relative ${isMobile ? 'w-10 h-10' : 'w-7 h-7'} ${task.color === group.shades[2] ? 'scale-110 ring-2 ring-white' : ''}`} style={{ backgroundColor: group.shades[2] }} />))}{!isMobile && <div className="w-8 h-8 opacity-0" />}</div>
         </div>
-        <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-2 justify-center'}`}>{COLOR_GROUPS.map((group) => (<button key={group.name} onClick={() => onUpdate({ ...task, color: group.shades[1] })} className={`rounded-full transition-all duration-300 relative flex items-center justify-center ${isMobile ? 'w-10 h-10' : 'w-6 h-6'} ${group.shades.includes(task.color) ? 'scale-110 ring-2 ring-white/50 shadow-md' : 'hover:scale-105'}`} style={{ backgroundColor: group.shades[1] }}>{group.shades.includes(task.color) && <div className="absolute -bottom-2 w-1 h-1 bg-slate-800 dark:bg-white rounded-full" />}</button>))}<button onClick={() => setShowColorGrid(!showColorGrid)} className={`rounded-full flex items-center justify-center transition-colors border bg-white/20 dark:bg-white/5 hover:bg-white/40 dark:hover:bg-white/10 border-white/30 dark:border-white/5 text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white ${showColorGrid ? 'bg-white/60 dark:bg-white/20 text-slate-800 dark:text-white' : ''} ${isMobile ? 'w-10 h-10' : 'w-8 h-8'}`}><ChevronUp size={14} className={`transition-transform duration-300 ${showColorGrid ? 'rotate-180' : ''}`} /></button></div>
+        <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-2 justify-center'}`}>{COLOR_GROUPS.map((group) => (<button key={group.name} onClick={() => onUpdate({ ...task, color: group.shades[1] })} className={`rounded-full transition-all duration-300 relative flex items-center justify-center ${isMobile ? 'w-10 h-10' : 'w-6 h-6'} ${group.shades.includes(task.color) ? 'scale-110 ring-2 ring-white/50 shadow-md' : 'hover:scale-105'}`} style={{ backgroundColor: group.shades[1] }}>{group.shades.includes(task.color) && <div className="absolute -bottom-2 w-1 h-1 bg-slate-800 dark:bg-white rounded-full" />}</button>))}<button onClick={() => setShowColorGrid(!showColorGrid)} className={`${GLASS_BTN_INACTIVE} ${showColorGrid ? GLASS_BTN_ACTIVE : ''} ${isMobile ? 'w-10 h-10 rounded-full' : 'w-8 h-8 rounded-full'}`}><ChevronUp size={14} className={`transition-transform duration-300 ${showColorGrid ? 'rotate-180' : ''}`} /></button></div>
     </div>
   );
 
   const renderDeleteButton = () => (
-    <button onClick={() => setShowDeleteConfirm(true)} className={`flex items-center justify-center rounded-xl transition-colors shrink-0 ${isMobile ? 'w-14 h-14 bg-white/20 dark:bg-white/5 hover:bg-red-500/20 text-slate-400 dark:text-white/40 hover:text-red-500 dark:hover:text-red-400' : 'p-2.5 text-slate-400 dark:text-white/30 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-white/10'}`}><Trash2 size={isMobile ? 22 : 18} /></button>
+    <button onClick={() => setShowDeleteConfirm(true)} className={`${GLASS_BTN_DANGER} ${isMobile ? 'w-14 h-14' : 'p-2.5'}`}><Trash2 size={isMobile ? 22 : 18} /></button>
   );
 
   return (
     <div className="absolute inset-0 z-40 overflow-hidden" onPointerUp={handleResizeEnd} onPointerLeave={handleResizeEnd} onPointerDown={() => audioService.resume()}>
       <div className={`absolute inset-0 bg-slate-200/40 dark:bg-black/40 backdrop-blur-[4px] transition-opacity duration-300 ${isPopping ? 'opacity-0' : 'opacity-100'}`} onClick={onClose} />
-      <div ref={viewportRef} className={`absolute pointer-events-none z-40 ${isResizing ? '' : 'transition-transform duration-500 cubic-bezier(0.2, 0.8, 0.2, 1)'}`} style={isCentered ? centeredStyle : initialStyle}>
+      <div ref={viewportRef} className={`absolute pointer-events-none z-40 ${isResizing ? '' : 'transition-all duration-500 cubic-bezier(0.2, 0.8, 0.2, 1)'}`} style={isCentered ? centeredStyle : initialStyle}>
           {!showDeleteConfirm && !isPopping && (
             <div ref={ringRef} className="resize-ring absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-2 border-dashed border-slate-400/30 dark:border-white/40 rounded-full pointer-events-auto" style={{ width: ringDiameter, height: ringDiameter, touchAction: 'none' }}>
                 {renderResizeHandle("-top-10 left-1/2 -translate-x-1/2", "ns-resize")}{renderResizeHandle("-bottom-10 left-1/2 -translate-x-1/2", "ns-resize")}{renderResizeHandle("top-1/2 -left-10 -translate-y-1/2", "ew-resize")}{renderResizeHandle("top-1/2 -right-10 -translate-y-1/2", "ew-resize")}
@@ -280,19 +383,87 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
           <div ref={bubbleRef} onClick={(e) => { e.stopPropagation(); if (interactionReady) { setIsEditing(true); setTimeout(() => textRef.current?.focus(), 0); } }} className={`bubble-main pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center cursor-text ${isResizing ? 'transition-none' : 'transition-all duration-300'}`} style={{ width: bubbleDiameter, height: bubbleDiameter, background: bubbleGradient, boxShadow: '0 15px 30px rgba(0,0,0,0.3)', ...(isPopping ? { transform: 'translate(-50%, -50%) scale(1.2)', opacity: 0 } : {}) }}>
               <div className="w-[65%] h-[65%] flex items-center justify-center relative">
                   {isPlaceholderVisible && <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"><span className="placeholder-text text-white font-bold italic opacity-50 text-center leading-[1.1]" style={{ fontSize: `${currentFontSize}px` }}>Task Name</span></div>}
-                  <div ref={textRef} contentEditable={isEditing} suppressContentEditableWarning onBlur={(e) => { setIsEditing(false); onUpdate({...task, title: e.currentTarget.innerText.trim()}); }} onInput={(e) => { setHasText(!!e.currentTarget.innerText); const newSize = calculateFontSize(currentSizeRef.current, e.currentTarget.innerText || 'Task Name'); e.currentTarget.style.fontSize = `${newSize}px`; const placeholderEl = viewportRef.current?.querySelector('.placeholder-text') as HTMLElement; if (placeholderEl) placeholderEl.style.fontSize = `${newSize}px`; }} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), e.currentTarget.blur())} className={`bubble-text-inner w-full text-center text-white font-bold outline-none pointer-events-auto drop-shadow-lg transition-opacity duration-200 z-20`} style={{ fontSize: currentFontSize, overflowWrap: 'normal', wordBreak: 'normal', hyphens: 'none', whiteSpace: 'pre-line', lineHeight: 1.1, minWidth: '20px' }}>{task.title}</div>
+                  <div 
+                    ref={textRef} 
+                    contentEditable={isEditing} 
+                    suppressContentEditableWarning 
+                    onBlur={(e) => { setIsEditing(false); onUpdate({...task, title: e.currentTarget.innerText.trim()}); }} 
+                    onInput={(e) => { setHasText(!!e.currentTarget.innerText); const newSize = calculateFontSize(currentSizeRef.current, e.currentTarget.innerText || 'Task Name'); e.currentTarget.style.fontSize = `${newSize}px`; const placeholderEl = viewportRef.current?.querySelector('.placeholder-text') as HTMLElement; if (placeholderEl) placeholderEl.style.fontSize = `${newSize}px`; }} 
+                    onKeyDown={handleKeyDown} 
+                    className={`bubble-text-inner w-full text-center text-white font-bold outline-none pointer-events-auto drop-shadow-lg transition-opacity duration-200 z-20`} 
+                    style={{ fontSize: currentFontSize, overflowWrap: 'anywhere', wordBreak: 'break-word', whiteSpace: 'pre-wrap', lineHeight: 1.1, minWidth: '20px' }}
+                  >
+                    {task.title}
+                  </div>
               </div>
           </div>
       </div>
     {!isPopping && (
       <div ref={controlsRef} className={`${controlsClass} pointer-events-auto`} style={controlsTransition} onPointerDown={(e) => e.stopPropagation()} >
-        <div className="w-full relative">
+        <div className="w-full h-full relative flex flex-col">
             {showDeleteConfirm ? (
                  <div className="w-full max-w-md mx-auto p-4 bg-white/50 dark:bg-white/10 backdrop-blur-xl rounded-[2rem] border border-red-500/30 shadow-2xl animate-in fade-in zoom-in-95 duration-200"><div className="flex flex-col items-center text-center gap-3 mb-5"><div className="w-12 h-12 rounded-full bg-red-500/10 dark:bg-red-500/20 flex items-center justify-center text-red-500"><AlertTriangle size={24} /></div><h3 className="text-slate-900 dark:text-white font-bold text-lg">Delete Task?</h3></div><div className="flex gap-3 w-full"><button onClick={() => setShowDeleteConfirm(false)} className="flex-1 py-3 bg-slate-200 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/20 rounded-xl text-slate-800 dark:text-white font-semibold transition-colors">Cancel</button><button onClick={() => { onDelete(task.id); onClose(); }} className="flex-1 py-3 bg-red-600 hover:bg-red-500 rounded-xl text-white font-bold shadow-lg shadow-red-500/20 transition-colors">Delete</button></div></div>
             ) : (
-                <div className="flex flex-col relative gap-4">
-                    {isMobile ? (<><div className="flex items-center justify-between gap-2">{renderBoardSelector()}{renderToolsGroup()}</div>{(showDescription || showSubtasks) && renderContentArea()}<div className="flex items-center justify-center mt-3"><div className="overflow-x-visible w-full">{renderColorPicker()}</div></div><div className="flex items-center gap-3 mt-4">{renderDeleteButton()}<button onClick={onClose} className="flex-1 h-14 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold text-sm tracking-wide shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"><Check size={20} /><span>Done</span></button></div></>) : (<><div className="flex flex-col">{(showDescription || showSubtasks) && <>{renderContentArea()}<div className="w-full h-px bg-slate-200 dark:bg-white/10 my-4" /></>}</div><div className="flex items-center gap-4 pb-1 px-1 overflow-visible"><div className="flex items-center gap-2 shrink-0">{renderBoardSelector()}{renderToolsGroup()}</div><div className="shrink-0">{renderColorPicker()}</div><div className="flex items-center gap-2 shrink-0 ml-auto pl-4 border-l border-white/10">{renderDeleteButton()}<button onClick={onClose} className="px-6 py-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold text-sm tracking-wide shadow-md active:scale-95 transition-all hover:bg-slate-800 dark:hover:bg-gray-200">Done</button></div></div></>)}
-                </div>
+                <>
+                {isMobile ? (
+                    <>
+                        <div className="flex items-center justify-between gap-2 shrink-0 mb-4 z-20 relative">
+                            {renderBoardSelector()}
+                            {renderToolsGroup()}
+                        </div>
+                        <div className="flex-1 overflow-y-auto custom-scrollbar -mx-5 px-5 min-h-0">
+                            {(showDescription || showSubtasks) && (
+                                <div className="mb-3">
+                                    {renderContentArea()}
+                                </div>
+                            )}
+                            <div className="flex items-center justify-center mb-4">
+                                <div className="overflow-x-visible w-full">{renderColorPicker()}</div>
+                            </div>
+                            <div className="flex items-center gap-3 pb-1">
+                                {renderDeleteButton()}
+                                <button 
+                                    onClick={onClose} 
+                                    className={`${GLASS_BTN_PRIMARY} flex-1 h-14 rounded-2xl flex items-center justify-center gap-2 shadow-lg transition-transform hover:scale-[1.02] active:scale-95`}
+                                >
+                                    <Check size={20} strokeWidth={3} />
+                                    <span className="font-bold tracking-wide">Done</span>
+                                </button>
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex flex-col gap-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex-1 min-w-[140px] max-w-[200px] z-20 relative">
+                                {renderBoardSelector()}
+                            </div>
+                            {renderToolsGroup()}
+                        </div>
+                        
+                        {(showDescription || showSubtasks) && (
+                            <div className="w-full">
+                                {renderContentArea()}
+                            </div>
+                        )}
+
+                        <div className="flex items-center justify-center py-2">
+                             {renderColorPicker()}
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                             {renderDeleteButton()}
+                             <button 
+                                onClick={onClose} 
+                                className={`${GLASS_BTN_PRIMARY} flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-transform hover:scale-[1.02] active:scale-95`}
+                             >
+                                <Check size={18} strokeWidth={3} />
+                                <span className="font-bold tracking-wide text-sm">Done</span>
+                             </button>
+                        </div>
+                    </div>
+                )}
+                </>
             )}
         </div>
       </div>

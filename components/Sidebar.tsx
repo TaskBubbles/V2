@@ -4,7 +4,7 @@ import { Menu, Plus, LayoutGrid, List, Trash2, Settings, X, Volume2, Bell, Moon,
 import { Board } from '../types';
 import { audioService } from '../services/audioService';
 import { notificationService } from '../services/notificationService';
-import { FAB_BASE_CLASS, GLASS_PANEL_CLASS } from '../constants';
+import { FAB_BASE_CLASS, GLASS_PANEL_CLASS, GLASS_MENU_ITEM, GLASS_MENU_ITEM_ACTIVE, GLASS_MENU_ITEM_INACTIVE } from '../constants';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -47,10 +47,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
   const handleToggleNotifications = async () => {
     const newState = !notificationsEnabled;
     if (newState) {
-        // Turning on: Check permission
         const granted = await notificationService.requestPermission();
         if (!granted) {
-            alert('Notifications are blocked by your browser settings. Please enable them to receive task alerts.');
+            alert('Notifications are blocked by your browser settings.');
             setNotificationsEnabled(false);
             return;
         }
@@ -60,12 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
 
   const handleDeleteData = () => {
     if (window.confirm('Are you sure you want to delete all data? This cannot be undone.')) {
-      try {
-        localStorage.clear();
-        window.location.href = window.location.href; // Force hard reload
-      } catch (e) {
-        alert('Failed to delete data. Please try clearing your browser cache.');
-      }
+      try { localStorage.clear(); window.location.href = window.location.href; } catch (e) { alert('Failed to delete data.'); }
     }
   };
 
@@ -86,27 +80,49 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
       />
       <div 
         aria-hidden={!isOpen}
-        className={`fixed top-0 left-0 h-full w-80 shadow-2xl z-50 transform transition-transform duration-500 cubic-bezier(0.2, 0.8, 0.2, 1) bg-white/40 dark:bg-slate-900/30 backdrop-blur-3xl border-r border-white/60 dark:border-white/10 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed top-0 left-0 h-full w-80 shadow-2xl z-50 transform transition-transform duration-500 cubic-bezier(0.2, 0.8, 0.2, 1) ${GLASS_PANEL_CLASS} border-l-0 border-y-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent dark:from-white/5 dark:to-transparent pointer-events-none" />
         <div className="relative p-6 flex flex-col h-full text-slate-800 dark:text-slate-200">
           <div className="mb-6 px-1 flex items-center gap-3">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight drop-shadow-sm">Task Bubbles</h2>
           </div>
-          <nav className="space-y-1.5 flex-1 overflow-y-auto no-scrollbar"><button onClick={() => { onSelectBoard('ALL'); setIsOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${currentBoardId === 'ALL' ? 'bg-white/40 dark:bg-white/10 text-slate-900 dark:text-white shadow-sm border-white/40 dark:border-white/10 backdrop-blur-md' : 'border-transparent text-slate-500 dark:text-white/60 hover:bg-white/20 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'}`}><LayoutGrid size={18} /><span className="font-medium text-sm">All Tasks</span></button><div className="pt-6 pb-2 px-4"><span className="text-[10px] font-bold text-slate-400 dark:text-white/30 uppercase tracking-widest">Task Boards</span></div>{boards.map((board) => (<button key={board.id} onClick={() => { onSelectBoard(board.id); setIsOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${currentBoardId === board.id ? 'bg-white/40 dark:bg-white/10 text-slate-900 dark:text-white shadow-sm border-white/40 dark:border-white/10 backdrop-blur-md' : 'border-transparent text-slate-500 dark:text-white/60 hover:bg-white/20 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'}`}><List size={18} /><span className="font-medium text-sm truncate">{board.name}</span></button>))}{isCreating ? (<form onSubmit={handleSubmit} className="px-1 py-2"><input aria-label="New board name" autoFocus type="text" placeholder="Board Name" value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} onBlur={() => !newBoardName && setIsCreating(false)} className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none transition-all bg-white/30 dark:bg-white/5 border border-white/40 dark:border-white/10 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/20 focus:border-slate-400 dark:focus:border-white/30" /></form>) : (<button onClick={() => setIsCreating(true)} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group mt-2 border border-transparent text-slate-400 dark:text-white/40 hover:text-slate-900 dark:hover:text-white hover:bg-white/20 dark:hover:bg-white/5 hover:border-white/30 dark:hover:border-white/10"><Plus size={18} className="group-hover:rotate-90 transition-transform" /><span className="font-medium text-sm">New Board</span></button>)}<div className="my-3 border-t border-slate-200 dark:border-white/10 mx-2" /><button onClick={() => { onSelectBoard('COMPLETED'); setIsOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border ${currentBoardId === 'COMPLETED' ? 'bg-white/40 dark:bg-white/10 text-slate-900 dark:text-white shadow-sm border-white/40 dark:border-white/10 backdrop-blur-md' : 'border-transparent text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-white/20 dark:hover:bg-white/5 hover:border-white/30 dark:hover:border-white/5'}`}><Trash2 size={18} /><span className="font-medium text-sm">Completed Tasks</span></button></nav>
-          <div className="pt-4 border-t border-slate-200 dark:border-white/10 mt-2 space-y-1.5"><button onClick={() => { setIsSettingsOpen(true); setIsOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all border border-transparent text-slate-500 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-white/20 dark:hover:bg-white/5 hover:border-white/30 dark:hover:border-white/5"><Settings size={18} /><span className="font-medium text-sm">Settings</span></button></div>
+          <nav className="space-y-1.5 flex-1 overflow-y-auto no-scrollbar">
+            <button onClick={() => { onSelectBoard('ALL'); setIsOpen(false); }} className={`${GLASS_MENU_ITEM} ${currentBoardId === 'ALL' ? GLASS_MENU_ITEM_ACTIVE : GLASS_MENU_ITEM_INACTIVE}`}>
+                <LayoutGrid size={18} /><span className="font-medium text-sm">All Tasks</span>
+            </button>
+            <div className="pt-6 pb-2 px-4"><span className="text-[10px] font-bold text-slate-400 dark:text-white/30 uppercase tracking-widest">Task Boards</span></div>
+            {boards.map((board) => (
+                <button key={board.id} onClick={() => { onSelectBoard(board.id); setIsOpen(false); }} className={`${GLASS_MENU_ITEM} ${currentBoardId === board.id ? GLASS_MENU_ITEM_ACTIVE : GLASS_MENU_ITEM_INACTIVE}`}>
+                    <List size={18} /><span className="font-medium text-sm truncate">{board.name}</span>
+                </button>
+            ))}
+            {isCreating ? (
+                <form onSubmit={handleSubmit} className="px-1 py-2">
+                    <input autoFocus type="text" placeholder="Board Name" value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} onBlur={() => !newBoardName && setIsCreating(false)} className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none transition-all bg-white/30 dark:bg-white/5 border border-white/40 dark:border-white/10 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/20 focus:border-slate-400 dark:focus:border-white/30" />
+                </form>
+            ) : (
+                <button onClick={() => setIsCreating(true)} className={`${GLASS_MENU_ITEM} ${GLASS_MENU_ITEM_INACTIVE} mt-2 group`}>
+                    <Plus size={18} className="group-hover:rotate-90 transition-transform" /><span className="font-medium text-sm">New Board</span>
+                </button>
+            )}
+            <div className="my-3 border-t border-slate-200 dark:border-white/10 mx-2" />
+            <button onClick={() => { onSelectBoard('COMPLETED'); setIsOpen(false); }} className={`${GLASS_MENU_ITEM} ${currentBoardId === 'COMPLETED' ? GLASS_MENU_ITEM_ACTIVE : GLASS_MENU_ITEM_INACTIVE}`}>
+                <Trash2 size={18} /><span className="font-medium text-sm">Completed Tasks</span>
+            </button>
+          </nav>
+          <div className="pt-4 border-t border-slate-200 dark:border-white/10 mt-2 space-y-1.5">
+            <button onClick={() => { setIsSettingsOpen(true); setIsOpen(false); }} className={`${GLASS_MENU_ITEM} ${GLASS_MENU_ITEM_INACTIVE}`}>
+                <Settings size={18} /><span className="font-medium text-sm">Settings</span>
+            </button>
+          </div>
         </div>
       </div>
       {isSettingsOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/20 dark:bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setIsSettingsOpen(false)} />
-            <div 
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="settings-title"
-              className={`relative w-full max-w-sm rounded-3xl transform transition-all animate-in fade-in zoom-in-95 duration-200 ${GLASS_PANEL_CLASS}`}
-            >
-                <div className="p-5 border-b border-slate-200 dark:border-white/10 flex items-center justify-center relative"><h3 id="settings-title" className="font-bold text-lg text-slate-900 dark:text-white tracking-tight">Settings</h3><button onClick={() => setIsSettingsOpen(false)} aria-label="Close settings" className="absolute right-4 p-2 rounded-full transition-colors text-slate-400 dark:text-white/40 hover:text-slate-900 dark:hover:text-white hover:bg-white/30 dark:hover:bg-white/10"><X size={18} /></button></div>
+            <div className={`relative w-full max-w-sm rounded-3xl transform transition-all animate-in fade-in zoom-in-95 duration-200 ${GLASS_PANEL_CLASS}`}>
+                <div className="p-5 border-b border-slate-200 dark:border-white/10 flex items-center justify-center relative"><h3 className="font-bold text-lg text-slate-900 dark:text-white tracking-tight">Settings</h3><button onClick={() => setIsSettingsOpen(false)} className="absolute right-4 p-2 rounded-full transition-colors text-slate-400 dark:text-white/40 hover:text-slate-900 dark:hover:text-white hover:bg-white/30 dark:hover:bg-white/10"><X size={18} /></button></div>
                 <div className="p-6 space-y-4">
                     <button onClick={onToggleTheme} className="w-full flex items-center justify-between p-3 rounded-2xl border transition-all duration-200 outline-none group bg-white/40 dark:bg-white/5 border-white/40 dark:border-white/5 hover:bg-white/60 dark:hover:bg-white/10 hover:border-white/60 dark:hover:border-white/20 active:scale-[0.98]"><div className="flex items-center gap-3 text-slate-700 dark:text-white/80"><div className="p-2 rounded-xl text-slate-500 dark:text-white/70 bg-white/50 dark:bg-white/10 group-hover:scale-110 transition-transform duration-300">{theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}</div><div className="flex flex-col items-start"><span className="font-bold text-sm">Dark Mode</span><span className="text-[10px] text-slate-400 dark:text-white/40 font-medium">Adjust appearance</span></div></div><Switch checked={theme === 'dark'} iconOn={<Moon size={14} className="text-indigo-600" />} iconOff={<Sun size={14} className="text-amber-500" />} colorClass="from-indigo-500 to-violet-600" /></button>
                     <button onClick={() => setSoundEnabled(!soundEnabled)} className="w-full flex items-center justify-between p-3 rounded-2xl border transition-all duration-200 outline-none group bg-white/40 dark:bg-white/5 border-white/40 dark:border-white/5 hover:bg-white/60 dark:hover:bg-white/10 hover:border-white/60 dark:hover:border-white/20 active:scale-[0.98]"><div className="flex items-center gap-3 text-slate-700 dark:text-white/80"><div className="p-2 rounded-xl text-slate-500 dark:text-white/70 bg-white/50 dark:bg-white/10 group-hover:scale-110 transition-transform duration-300">{soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}</div><div className="flex flex-col items-start"><span className="font-bold text-sm">Sound Effects</span><span className="text-[10px] text-slate-400 dark:text-white/40 font-medium">Bubbles go pop</span></div></div><Switch checked={soundEnabled} iconOn={<Volume2 size={14} className="text-blue-600" />} iconOff={<VolumeX size={14} className="text-slate-400" />} colorClass="from-blue-400 to-blue-600" /></button>
