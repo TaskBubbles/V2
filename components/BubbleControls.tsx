@@ -46,6 +46,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const [winDim, setWinDim] = useState({ w: window.innerWidth, h: window.innerHeight });
   const isMobile = winDim.w < 768;
   const maxHeightRef = useRef(window.innerHeight);
+  const lastEditStartTime = useRef(0);
 
   // Board Dropdown State
   const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
@@ -77,11 +78,29 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
         const w = window.innerWidth;
         const h = window.innerHeight;
         setWinDim({ w, h });
+        
+        // Update max height logic
         if (h > maxHeightRef.current) maxHeightRef.current = h;
+
+        // Detect keyboard closing on mobile
+        // Grace period to prevent immediate closure during opening animation
+        if (isMobile && isEditing && (Date.now() - lastEditStartTime.current > 600)) {
+            // If viewport returns to near max height, keyboard likely closed
+            if (h > maxHeightRef.current * 0.85) {
+                if (textRef.current) textRef.current.blur();
+                setIsEditing(false);
+            }
+        }
     };
+
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', handleResize);
+
+    return () => {
+        window.removeEventListener('resize', handleResize);
+        if (window.visualViewport) window.visualViewport.removeEventListener('resize', handleResize);
+    };
+  }, [isEditing, isMobile]);
 
   useEffect(() => { 
       const t = setTimeout(() => setIsCentered(true), 20); 
@@ -249,6 +268,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     // We set state first to ensure react knows we are editing,
     // but we also force focus synchronously on the element.
     setIsEditing(true);
+    lastEditStartTime.current = Date.now();
 
     if (textRef.current) {
         textRef.current.contentEditable = "true";
@@ -262,7 +282,9 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const fitScale = bubbleDiameter > safeZone ? safeZone / bubbleDiameter : 1;
 
   const initialStyle: React.CSSProperties = startPos ? { left: `${startPos.x}px`, top: `${startPos.y}px`, transform: `translate(-50%, -50%) scale(${startPos.k})` } : { left: '50%', top: '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
-  const centeredStyle: React.CSSProperties = { left: '50%', top: isMobile ? (isEditing ? '40%' : '35%') : '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
+  
+  // Adjusted top position to 25% when editing on mobile to clear keyboard
+  const centeredStyle: React.CSSProperties = { left: '50%', top: isMobile ? (isEditing ? '25%' : '35%') : '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
 
   const controlsClass = isMobile 
     ? `fixed bottom-0 left-0 w-full px-5 pt-6 pb-[max(2rem,calc(env(safe-area-inset-bottom)+1.5rem))] rounded-t-[2.5rem] z-[60] max-h-[85vh] flex flex-col no-scrollbar ${GLASS_PANEL_CLASS}`
@@ -484,7 +506,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     )}
     {isMobile && isEditing && (
         <button 
-           className="fixed bottom-6 right-6 z-[70] bg-white/60 dark:bg-slate-800/60 text-slate-900 dark:text-white backdrop-blur-xl w-14 h-14 rounded-full shadow-2xl border border-white/40 dark:border-white/10 flex items-center justify-center animate-in fade-in zoom-in duration-300 pointer-events-auto active:scale-90 transition-all hover:bg-white/80 dark:hover:bg-slate-700/60"
+           className="fixed bottom-6 right-6 z-[100] bg-white/60 dark:bg-slate-800/60 text-slate-900 dark:text-white backdrop-blur-xl w-14 h-14 rounded-full shadow-2xl border border-white/40 dark:border-white/10 flex items-center justify-center animate-in fade-in zoom-in duration-300 pointer-events-auto active:scale-90 transition-all hover:bg-white/80 dark:hover:bg-slate-700/60"
            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); textRef.current?.blur(); }}
            aria-label="Close keyboard"
         >
