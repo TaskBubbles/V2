@@ -46,6 +46,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const [winDim, setWinDim] = useState({ w: window.innerWidth, h: window.innerHeight });
   const isMobile = winDim.w < 768;
   const maxHeightRef = useRef(window.innerHeight);
+  const lastHeightRef = useRef(window.innerHeight);
 
   // Board Dropdown State
   const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
@@ -74,14 +75,23 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
   useEffect(() => {
     const handleResize = () => {
-        const w = window.innerWidth;
         const h = window.innerHeight;
+        const w = window.innerWidth;
         setWinDim({ w, h });
+        
         if (h > maxHeightRef.current) maxHeightRef.current = h;
-        if (isEditing && isMobile && h > maxHeightRef.current * 0.85) {
+
+        // Optimized Keyboard Closure Detection: 
+        // Only blur if the height has significantly increased from a previously small height (the keyboard height)
+        const wasKeyboardOpen = lastHeightRef.current < maxHeightRef.current * 0.75;
+        const isNowKeyboardClosed = h > maxHeightRef.current * 0.85;
+
+        if (isEditing && isMobile && wasKeyboardOpen && isNowKeyboardClosed) {
             if (textRef.current) textRef.current.blur();
             setIsEditing(false);
         }
+        
+        lastHeightRef.current = h;
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -96,7 +106,24 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   useEffect(() => { setHasText(!!task.title); }, [task.title]);
 
   useEffect(() => { 
-      if (isEditing && textRef.current) setTimeout(() => { if(textRef.current) textRef.current.focus(); }, 50);
+      if (isEditing && textRef.current) {
+          // Focus with a slight delay to ensure the contentEditable is ready
+          const focusTimer = setTimeout(() => {
+              if (textRef.current && document.activeElement !== textRef.current) {
+                  textRef.current.focus();
+                  // Move cursor to end
+                  const range = document.createRange();
+                  const sel = window.getSelection();
+                  if (sel) {
+                      range.selectNodeContents(textRef.current);
+                      range.collapse(false);
+                      sel.removeAllRanges();
+                      sel.addRange(range);
+                  }
+              }
+          }, 100);
+          return () => clearTimeout(focusTimer);
+      }
   }, [isEditing]);
 
   useEffect(() => {
@@ -233,8 +260,9 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter') {
-        if (!isMobile && !e.shiftKey) {
-            e.preventDefault(); e.currentTarget.blur();
+        if (!e.shiftKey) {
+            e.preventDefault(); 
+            e.currentTarget.blur();
         }
     }
   };
@@ -369,6 +397,13 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     <button onClick={() => setShowDeleteConfirm(true)} className={`${GLASS_BTN_DANGER} ${isMobile ? 'w-14 h-14' : 'p-2.5'}`}><Trash2 size={isMobile ? 22 : 18} /></button>
   );
 
+  const handleTitleAreaClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); 
+    if (interactionReady && !isEditing) {
+        setIsEditing(true);
+    }
+  };
+
   return (
     <div className="absolute inset-0 z-40 overflow-hidden" onPointerUp={handleResizeEnd} onPointerLeave={handleResizeEnd} onPointerDown={() => audioService.resume()}>
       <div className={`absolute inset-0 bg-slate-200/40 dark:bg-black/40 backdrop-blur-[4px] transition-opacity duration-300 ${isPopping ? 'opacity-0' : 'opacity-100'}`} onClick={onClose} />
@@ -383,15 +418,24 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                 <div className={TOOLTIP_BASE_CLASS}>Tap to edit</div><div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-white/90 dark:border-t-slate-800/90 absolute left-1/2 -translate-x-1/2 -bottom-[6px]" />
              </div>
           )}
-          <div ref={bubbleRef} onClick={(e) => { e.stopPropagation(); if (interactionReady) { setIsEditing(true); setTimeout(() => textRef.current?.focus(), 0); } }} className={`bubble-main pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center cursor-text ${isResizing ? 'transition-none' : 'transition-all duration-300'}`} style={{ width: bubbleDiameter, height: bubbleDiameter, background: bubbleGradient, boxShadow: '0 15px 30px rgba(0,0,0,0.3)', ...(isPopping ? { transform: 'translate(-50%, -50%) scale(1.2)', opacity: 0 } : {}) }}>
+          <div ref={bubbleRef} onClick={handleTitleAreaClick} className={`bubble-main pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center cursor-text ${isResizing ? 'transition-none' : 'transition-all duration-300'}`} style={{ width: bubbleDiameter, height: bubbleDiameter, background: bubbleGradient, boxShadow: '0 15px 30px rgba(0,0,0,0.3)', ...(isPopping ? { transform: 'translate(-50%, -50%) scale(1.2)', opacity: 0 } : {}) }}>
               <div className="w-[65%] h-[65%] flex items-center justify-center relative">
                   {isPlaceholderVisible && <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"><span className="placeholder-text text-white font-bold italic opacity-50 text-center leading-[1.1]" style={{ fontSize: `${currentFontSize}px` }}>Task Name</span></div>}
                   <div 
                     ref={textRef} 
                     contentEditable={isEditing} 
                     suppressContentEditableWarning 
-                    onBlur={(e) => { setIsEditing(false); onUpdate({...task, title: e.currentTarget.innerText.trim()}); }} 
-                    onInput={(e) => { setHasText(!!e.currentTarget.innerText); const newSize = calculateFontSize(currentSizeRef.current, e.currentTarget.innerText || 'Task Name'); e.currentTarget.style.fontSize = `${newSize}px`; const placeholderEl = viewportRef.current?.querySelector('.placeholder-text') as HTMLElement; if (placeholderEl) placeholderEl.style.fontSize = `${newSize}px`; }} 
+                    onBlur={(e) => { 
+                        setIsEditing(false); 
+                        onUpdate({...task, title: e.currentTarget.innerText.trim()}); 
+                    }} 
+                    onInput={(e) => { 
+                        setHasText(!!e.currentTarget.innerText); 
+                        const newSize = calculateFontSize(currentSizeRef.current, e.currentTarget.innerText || 'Task Name'); 
+                        e.currentTarget.style.fontSize = `${newSize}px`; 
+                        const placeholderEl = viewportRef.current?.querySelector('.placeholder-text') as HTMLElement; 
+                        if (placeholderEl) placeholderEl.style.fontSize = `${newSize}px`; 
+                    }} 
                     onKeyDown={handleKeyDown} 
                     className={`bubble-text-inner w-full text-center text-white font-bold outline-none pointer-events-auto drop-shadow-lg transition-opacity duration-200 z-20`} 
                     style={{ fontSize: currentFontSize, overflowWrap: 'anywhere', wordBreak: 'break-word', whiteSpace: 'pre-wrap', lineHeight: 1.1, minWidth: '20px' }}
