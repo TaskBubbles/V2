@@ -1,43 +1,14 @@
 
+// Kuro Glass Palette - Simplified Base 6
 
-// Kuro Glass Palette 4.8
-// 18 Distinct Colors arranged in a 6x3 Grid
-
-export interface ColorGroup {
-    name: string;
-    shades: [string, string, string]; // Top (Alt), Base (Primary), Bottom (Deep/Alt)
-}
-
-export const COLOR_GROUPS: ColorGroup[] = [
-    {
-        name: 'Red',
-        shades: ['#f87171', '#ef4444', '#b91c1c'] 
-    },
-    {
-        name: 'Orange', 
-        shades: ['#fb923c', '#f97316', '#c2410c']
-    },
-    {
-        name: 'Yellow', 
-        shades: ['#ffca28', '#ffb300', '#ff8f00']
-    },
-    {
-        name: 'Green', 
-        shades: ['#10b981', '#22c55e', '#15803d']
-    },
-    {
-        name: 'Blue', 
-        shades: ['#38bdf8', '#3b82f6', '#1e40af']
-    },
-    {
-        name: 'Purple',
-        shades: ['#d946ef', '#a855f7', '#6b21a8']
-    }
+export const COLORS = [
+    '#ef4444', // Red
+    '#f97316', // Orange
+    '#ffb300', // Yellow
+    '#22c55e', // Green
+    '#3b82f6', // Blue
+    '#a855f7'  // Purple
 ];
-
-export const BASE_COLORS = COLOR_GROUPS.map(g => g.shades[1]);
-export const ALL_COLORS = COLOR_GROUPS.flatMap(g => g.shades);
-export const COLORS = BASE_COLORS;
 
 export const MIN_BUBBLE_SIZE = 20; 
 export const MAX_BUBBLE_SIZE = 220; 
@@ -78,44 +49,45 @@ export const GLASS_MENU_ITEM_INACTIVE = "border-transparent text-slate-500 dark:
 
 /**
  * Calculates a dynamic font size to fit text within the bubble.
- * Optimized for readability with multi-line support.
+ * Optimized for aesthetic fill and readability.
  */
 export const calculateFontSize = (radius: number, text: string): number => {
   if (!text) return radius / 3;
 
-  // Effective container dimensions (bubbles are round, text flows in a square-ish shape inside)
-  const containerWidth = radius * 1.65; 
-  
-  const lines = text.split('\n');
+  const words = text.split(/\s+/);
   const totalChars = text.length;
+  
+  // Safe area dimension (square inside circle)
+  // sqrt(2) * r is the max square side, approx 1.414. 
+  // We go slightly smaller (1.35) for visual breathing room.
+  const containerSize = radius * 1.35; 
 
-  // 1. Line Length Constraint:
-  // Find the longest visual line to ensure it doesn't overflow horizontally.
-  // We assume an average character width ratio relative to font size.
-  const longestLineChars = lines.reduce((max, line) => Math.max(max, line.length), 0);
-  const charWidthRatio = 0.55; // Average aspect ratio of a font character
-  const sizeToFitWidth = containerWidth / (Math.max(longestLineChars, 2) * charWidthRatio);
+  // Heuristic 1: Length of the longest word vs Container Width
+  const longestWord = words.reduce((a, b) => a.length > b.length ? a : b, "");
+  // Assume avg char aspect ratio 0.6 (font width / font height)
+  // We allow words to be slightly wider than container if they wrap, but we want to avoid it.
+  const maxFontSizeByWidth = containerSize / (longestWord.length * 0.55);
 
-  // 2. Area Constraint:
-  // Ensure total text volume fits within the circle area.
-  // We model this by comparing total characters to available square area.
-  // We use a looser density factor for short text to make it pop, tighter for long text.
-  const densityFactor = totalChars > 50 ? 0.7 : 0.85; 
-  const availableArea = (radius * 1.5) * (radius * 1.5);
-  const sizeToFitArea = Math.sqrt(availableArea / (totalChars * densityFactor));
+  // Heuristic 2: Total Area fill
+  // Total Area available ~= containerSize * containerSize
+  // Text Area ~= totalChars * (fontSize^2 * charConstant)
+  // Rearranged: fontSize = sqrt(Area / totalChars)
+  // We adjust the density factor: lower means bigger text allowed
+  const densityFactor = totalChars < 10 ? 0.9 : 1.2; 
+  const maxFontSizeByArea = Math.sqrt((containerSize * containerSize) / (totalChars * densityFactor));
 
-  // 3. Radius Constraint:
-  // Cap the maximum size based on the bubble radius so short words don't look comically large.
-  const sizeToFitRadius = radius * 0.5;
+  // Pick the limiting factor
+  let fontSize = Math.min(maxFontSizeByWidth, maxFontSizeByArea);
 
-  // Calculate final font size taking the most restrictive constraint
-  let fontSize = Math.min(sizeToFitWidth, sizeToFitArea, sizeToFitRadius);
+  // Boost for very short text (1-3 chars, e.g., "Hi", "1")
+  if (totalChars <= 3) {
+      fontSize = radius * 0.8; 
+  }
 
-  // Hard clamp for legibility
-  // Min size increases slightly with radius to prevent tiny text in huge bubbles, 
-  // but has a hard floor of 9px for absolute readability.
-  const minReadable = Math.max(9, radius * 0.15); 
-  const maxCap = 48;
+  // Clamps
+  // Min size: grows slightly with bubble size so large bubbles don't have microscopic text
+  const minReadable = Math.max(10, radius * 0.15); 
+  const maxCap = radius * 0.65; // Never take up more than ~65% of vertical height per line roughly
 
   return Math.max(minReadable, Math.min(fontSize, maxCap));
 };

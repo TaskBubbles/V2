@@ -712,7 +712,10 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     allNodes.filter(d => !!d.isCenter).select('.center-icon').style('color', theme === 'dark' ? 'white' : '#475569').html(`<div style="font-family: inherit; font-weight: 200; font-size: ${isMobile ? 56 : 42}px; line-height: 1; margin-top: -4px;">+</div>`);
     allNodes.select('.main-bubble').attr('r', d => d.r).attr('fill', d => { if (d.isCenter) return 'url(#center-glass-gradient)'; if (d.originalTask.completed) return theme === 'dark' ? '#1e293b' : '#cbd5e1'; const color = d.originalTask.color; return color ? `url(#grad-${color.replace('#', '')})` : '#cccccc'; }).attr('stroke', d => d.isCenter ? 'url(#center-glass-stroke)' : 'none').attr('stroke-width', d => d.isCenter ? null : 0).style('filter', d => d.isCenter ? (theme === 'dark' ? 'drop-shadow(0px 8px 32px rgba(0,0,0,0.25))' : 'drop-shadow(0px 8px 24px rgba(0,0,0,0.15))') : (theme === 'dark' ? 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))' : 'drop-shadow(0px 4px 16px rgba(148, 163, 184, 0.4))')).attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`);
     allNodes.select('.pop-ring').attr('r', d => d.r + 3).attr('stroke', d => d.originalTask.completed ? '#22c55e' : '#ef4444').attr('stroke-dasharray', d => 2 * Math.PI * (d.r + 3)).attr('stroke-dashoffset', d => 2 * Math.PI * (d.r + 3));
-    allNodes.select('.text-content foreignObject').attr('width', d => d.r * 1.6).attr('height', d => d.r * 1.6).attr('x', d => -d.r * 0.8).attr('y', d => -d.r * 0.8);
+    
+    // Updated foreignObject Size to fit approx sqrt(2) * r (square in circle)
+    // 1.42 is a safe approximation for fitting a square inside a circle without corners touching too much
+    allNodes.select('.text-content foreignObject').attr('width', d => d.r * 1.42).attr('height', d => d.r * 1.42).attr('x', d => -d.r * 0.71).attr('y', d => -d.r * 0.71);
 
     // UPDATE: Redesigned Content Layout with Unified "Pill"
     allNodes.select('.bubble-text-container').html(d => { 
@@ -721,15 +724,15 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         let html = `<div style="display: flex; flex-direction: column; height: 100%; justify-content: center; align-items: center; position: relative;">`;
 
         // Title (Centered)
-        // If there is metadata, push title up slightly to center vertically in available space
+        // Improved CSS for wrapping: hyphens for long words, normal wrapping otherwise.
         const hasMetadata = d.originalTask.dueDate || d.originalTask.description || (d.originalTask.subtasks && d.originalTask.subtasks.length > 0);
         const titleStyle = hasMetadata ? 'margin-bottom: 20px;' : ''; 
         
-        html += `<div class="bubble-text font-bold leading-tight select-none px-0.5" style="overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap; line-height: 1.1; text-shadow: 0 1px 2px rgba(0,0,0,0.3); ${titleStyle}">${d.originalTask.title}</div>`; 
+        html += `<div class="bubble-text font-bold leading-tight select-none px-0.5" style="overflow-wrap: break-word; word-wrap: break-word; hyphens: auto; word-break: normal; white-space: normal; line-height: 1.05; text-shadow: 0 1px 3px rgba(0,0,0,0.3); ${titleStyle}">${d.originalTask.title}</div>`; 
         
         // Unified Metadata Pill (Bottom)
         if (hasMetadata && d.r > 40) { // Only show on bubbles large enough
-            html += `<div style="position: absolute; bottom: 8%; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.15); backdrop-filter: blur(4px); padding: 3px 8px; border-radius: 20px; color: white; font-weight: 600; font-size: ${Math.max(9, d.r * 0.14)}px; white-space: nowrap; border: 1px solid rgba(255,255,255,0.1);">`;
+            html += `<div style="position: absolute; bottom: 4%; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.15); backdrop-filter: blur(4px); padding: 3px 8px; border-radius: 20px; color: white; font-weight: 600; font-size: ${Math.max(9, d.r * 0.14)}px; white-space: nowrap; border: 1px solid rgba(255,255,255,0.1);">`;
             
             // Date
             if (d.originalTask.dueDate) {
