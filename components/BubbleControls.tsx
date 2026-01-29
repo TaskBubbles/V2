@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { v4 as uuidv4 } from 'uuid';
 import { Task, Board, Subtask } from '../types';
-import { COLOR_GROUPS, MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, calculateFontSize, GLASS_PANEL_CLASS, TOOLTIP_BASE_CLASS, GLASS_BTN_INACTIVE, GLASS_BTN_ACTIVE, GLASS_BTN_BASE, GLASS_BTN_DANGER, GLASS_BTN_PRIMARY, GLASS_MENU_ITEM, GLASS_MENU_ITEM_ACTIVE, GLASS_MENU_ITEM_INACTIVE } from '../constants';
+import { COLOR_GROUPS, MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, calculateFontSize, GLASS_PANEL_CLASS, TOOLTIP_BASE_CLASS, GLASS_BTN_INACTIVE, GLASS_BTN_ACTIVE, GLASS_BTN_DANGER, GLASS_MENU_ITEM, GLASS_MENU_ITEM_ACTIVE, GLASS_MENU_ITEM_INACTIVE } from '../constants';
 import { Trash2, Calendar, AlertTriangle, X, ChevronDown, Check, ChevronUp, AlignLeft, Plus, Square, CheckSquare, ListChecks, Palette } from 'lucide-react';
 import { audioService } from '../services/audioService';
 
@@ -27,6 +27,9 @@ const toDateTimeLocal = (isoString?: string) => {
         return localDate.toISOString().slice(0, 16);
     } catch { return ""; }
 };
+
+// Unified Glass Button Style matching active theme (White Glass / Dark Slate Glass)
+const GLASS_BTN_THEMED = "relative border flex items-center justify-center shrink-0 group outline-none overflow-hidden transition-all duration-200 active:scale-95 bg-white/60 dark:bg-slate-800/60 text-slate-900 dark:text-white border-white/40 dark:border-white/10 shadow-lg hover:bg-white/80 dark:hover:bg-slate-700/80 backdrop-blur-xl font-bold tracking-wide";
 
 export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, startPos, onUpdate, onDelete, onClose, onPop }) => {
   const [isCentered, setIsCentered] = useState(false);
@@ -422,13 +425,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                             </div>
                             <div className="flex items-center gap-3 pb-1">
                                 {renderDeleteButton()}
-                                <button 
-                                    onClick={onClose} 
-                                    className={`${GLASS_BTN_PRIMARY} flex-1 h-14 rounded-2xl flex items-center justify-center gap-2 shadow-lg transition-transform hover:scale-[1.02] active:scale-95`}
-                                >
-                                    <Check size={20} strokeWidth={3} />
-                                    <span className="font-bold tracking-wide">Done</span>
-                                </button>
+                                <button onClick={onClose} className={`flex-1 h-14 rounded-2xl ${GLASS_BTN_THEMED} gap-2`}><Check size={20} /><span>Done</span></button>
                             </div>
                         </div>
                     </>
@@ -442,24 +439,24 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                         </div>
                         
                         {(showDescription || showSubtasks) && (
-                            <div className="w-full">
+                            <>
+                                <div className="w-full h-px bg-slate-200 dark:bg-white/10" />
                                 {renderContentArea()}
-                            </div>
+                            </>
                         )}
 
-                        <div className="flex items-center justify-center py-2">
-                             {renderColorPicker()}
-                        </div>
+                        <div className="w-full h-px bg-slate-200 dark:bg-white/10" />
 
-                        <div className="flex items-center gap-3">
-                             {renderDeleteButton()}
-                             <button 
-                                onClick={onClose} 
-                                className={`${GLASS_BTN_PRIMARY} flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-transform hover:scale-[1.02] active:scale-95`}
-                             >
-                                <Check size={18} strokeWidth={3} />
-                                <span className="font-bold tracking-wide text-sm">Done</span>
-                             </button>
+                        <div className="flex items-center justify-between gap-4">
+                            <div className="relative z-10">
+                                    {renderColorPicker()}
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {renderDeleteButton()}
+                                <button onClick={onClose} className={`h-10 px-5 rounded-xl ${GLASS_BTN_THEMED} gap-2`}>
+                                    <Check size={18} /><span>Done</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -468,6 +465,15 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
         </div>
       </div>
     )}
+    {isMobile && isEditing && (
+        <button 
+           className={`fixed bottom-6 right-6 z-[70] w-14 h-14 rounded-full shadow-2xl ${GLASS_BTN_THEMED}`}
+           onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); textRef.current?.blur(); }}
+           aria-label="Close keyboard"
+        >
+           <ChevronDown size={32} strokeWidth={2.5} />
+        </button>
+      )}
     </div>
   );
 };
