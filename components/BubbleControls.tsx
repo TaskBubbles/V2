@@ -82,9 +82,9 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
         // Update max height logic
         if (h > maxHeightRef.current) maxHeightRef.current = h;
 
-        // Detect keyboard closing on mobile
+        // Detect keyboard closing on mobile via resize (native back button / gesture)
         // Grace period to prevent immediate closure during opening animation
-        if (isMobile && isEditing && (Date.now() - lastEditStartTime.current > 600)) {
+        if (isMobile && isEditing && (Date.now() - lastEditStartTime.current > 500)) {
             // If viewport returns to near max height, keyboard likely closed
             if (h > maxHeightRef.current * 0.85) {
                 if (textRef.current) textRef.current.blur();
@@ -283,8 +283,8 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
   const initialStyle: React.CSSProperties = startPos ? { left: `${startPos.x}px`, top: `${startPos.y}px`, transform: `translate(-50%, -50%) scale(${startPos.k})` } : { left: '50%', top: '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
   
-  // Adjusted top position to 25% when editing on mobile to clear keyboard
-  const centeredStyle: React.CSSProperties = { left: '50%', top: isMobile ? (isEditing ? '25%' : '35%') : '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
+  // Adjusted top position: 45% when editing on mobile (centered in the visible viewport above keyboard), 35% when menu is open
+  const centeredStyle: React.CSSProperties = { left: '50%', top: isMobile ? (isEditing ? '45%' : '35%') : '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
 
   const controlsClass = isMobile 
     ? `fixed bottom-0 left-0 w-full px-5 pt-6 pb-[max(2rem,calc(env(safe-area-inset-bottom)+1.5rem))] rounded-t-[2.5rem] z-[60] max-h-[85vh] flex flex-col no-scrollbar ${GLASS_PANEL_CLASS}`
@@ -507,7 +507,12 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     {isMobile && isEditing && (
         <button 
            className="fixed bottom-6 right-6 z-[100] bg-white/60 dark:bg-slate-800/60 text-slate-900 dark:text-white backdrop-blur-xl w-14 h-14 rounded-full shadow-2xl border border-white/40 dark:border-white/10 flex items-center justify-center animate-in fade-in zoom-in duration-300 pointer-events-auto active:scale-90 transition-all hover:bg-white/80 dark:hover:bg-slate-700/60"
-           onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); textRef.current?.blur(); }}
+           onPointerDown={(e) => { 
+               e.preventDefault(); 
+               e.stopPropagation(); 
+               textRef.current?.blur(); 
+               setIsEditing(false);
+           }}
            aria-label="Close keyboard"
         >
            <ChevronDown size={32} strokeWidth={2.5} />
