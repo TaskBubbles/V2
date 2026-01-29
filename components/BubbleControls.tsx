@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { v4 as uuidv4 } from 'uuid';
@@ -382,25 +383,25 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
   const renderColorPicker = () => (
     <div ref={colorSectionRef} className={`relative group/colors z-10 shrink-0 ${isMobile ? 'w-full' : ''}`}>
-        <div className={`${showColorGrid ? 'flex opacity-100 pointer-events-auto scale-100' : 'hidden opacity-0 pointer-events-none scale-95'} ${isMobile ? 'static flex-col gap-3 w-full mb-4 animate-in slide-in-from-bottom-2 fade-in' : 'absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 flex-col gap-2 p-2 bg-white/30 dark:bg-slate-900/40 backdrop-blur-3xl border border-white/40 dark:border-white/10 rounded-2xl shadow-2xl origin-bottom transition-all duration-300'}`} style={{ width: isMobile ? '100%' : 'max-content' }}>
+        <div className={`${showColorGrid ? 'flex opacity-100 pointer-events-auto scale-100' : 'hidden opacity-0 pointer-events-none scale-95'} ${isMobile ? 'static flex-col gap-3 w-full mb-4 animate-in slide-in-from-bottom-2 fade-in' : 'absolute bottom-[calc(100%+16px)] left-1/2 -translate-x-1/2 flex-col gap-3 p-4 bg-white/40 dark:bg-slate-900/60 backdrop-blur-3xl border border-white/40 dark:border-white/10 rounded-2xl shadow-2xl origin-bottom transition-all duration-300'}`} style={{ width: isMobile ? '100%' : 'max-content' }}>
                 <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-3 justify-center'}`}>
                     {COLOR_GROUPS.map((group, idx) => {
                         if (idx === COLOR_GROUPS.length - 1) {
                             return (
-                                <label key="custom-color" className={`rounded-full transition-transform hover:scale-110 relative flex items-center justify-center cursor-pointer overflow-hidden bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500 ${isMobile ? 'w-10 h-10' : 'w-7 h-7'}`}>
+                                <label key="custom-color" className={`rounded-full transition-transform hover:scale-110 relative flex items-center justify-center cursor-pointer overflow-hidden bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500 shadow-sm ${isMobile ? 'w-10 h-10' : 'w-8 h-8'}`}>
                                     <input type="color" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => onUpdate({ ...task, color: e.target.value })} />
                                     <Palette size={isMobile ? 18 : 14} className="text-white drop-shadow-md" />
                                 </label>
                             );
                         }
                         return (
-                            <button key={`${group.name}-light`} onClick={() => onUpdate({ ...task, color: group.shades[0] })} className={`rounded-full transition-transform hover:scale-110 relative ${isMobile ? 'w-10 h-10' : 'w-7 h-7'} ${task.color === group.shades[0] ? 'scale-110 ring-2 ring-white' : ''}`} style={{ backgroundColor: group.shades[0] }} />
+                            <button key={`${group.name}-light`} onClick={() => onUpdate({ ...task, color: group.shades[0] })} className={`rounded-full transition-transform hover:scale-110 relative ${isMobile ? 'w-10 h-10' : 'w-8 h-8'} ${task.color === group.shades[0] ? 'scale-110 ring-2 ring-offset-2 ring-offset-transparent ring-white shadow-lg' : ''}`} style={{ backgroundColor: group.shades[0] }} />
                         );
                     })}
                 </div>
-                <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-3 justify-center'}`}>{COLOR_GROUPS.map((group) => (<button key={`${group.name}-dark`} onClick={() => onUpdate({ ...task, color: group.shades[2] })} className={`rounded-full transition-transform hover:scale-110 relative ${isMobile ? 'w-10 h-10' : 'w-7 h-7'} ${task.color === group.shades[2] ? 'scale-110 ring-2 ring-white' : ''}`} style={{ backgroundColor: group.shades[2] }} />))}{!isMobile && <div className="w-8 h-8 opacity-0" />}</div>
+                <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-3 justify-center'}`}>{COLOR_GROUPS.map((group) => (<button key={`${group.name}-dark`} onClick={() => onUpdate({ ...task, color: group.shades[2] })} className={`rounded-full transition-transform hover:scale-110 relative ${isMobile ? 'w-10 h-10' : 'w-8 h-8'} ${task.color === group.shades[2] ? 'scale-110 ring-2 ring-offset-2 ring-offset-transparent ring-white shadow-lg' : ''}`} style={{ backgroundColor: group.shades[2] }} />))}{!isMobile && <div className="w-8 h-8 opacity-0" />}</div>
         </div>
-        <div className={`flex items-center ${isMobile ? 'justify-between px-2' : 'gap-2 justify-center'}`}>{COLOR_GROUPS.map((group) => (<button key={group.name} onClick={() => onUpdate({ ...task, color: group.shades[1] })} className={`rounded-full transition-all duration-300 relative flex items-center justify-center ${isMobile ? 'w-10 h-10' : 'w-6 h-6'} ${group.shades.includes(task.color) ? 'scale-110 ring-2 ring-white/50 shadow-md' : 'hover:scale-105'}`} style={{ backgroundColor: group.shades[1] }}>{group.shades.includes(task.color) && <div className="absolute -bottom-2 w-1 h-1 bg-slate-800 dark:bg-white rounded-full" />}</button>))}<button onClick={() => setShowColorGrid(!showColorGrid)} className={`${GLASS_BTN_INACTIVE} ${showColorGrid ? GLASS_BTN_ACTIVE : ''} ${isMobile ? 'w-10 h-10 rounded-full' : 'w-8 h-8 rounded-full'}`}><ChevronUp size={14} className={`transition-transform duration-300 ${showColorGrid ? 'rotate-180' : ''}`} /></button></div>
+        <div className={`flex items-center ${isMobile ? 'justify-between px-2 py-2' : 'gap-2 justify-center py-2'}`}>{COLOR_GROUPS.map((group) => (<button key={group.name} onClick={() => onUpdate({ ...task, color: group.shades[1] })} className={`rounded-full transition-all duration-300 relative flex items-center justify-center ${isMobile ? 'w-10 h-10' : 'w-7 h-7'} ${group.shades.includes(task.color) ? 'scale-110 ring-2 ring-offset-1 ring-offset-transparent ring-white shadow-md' : 'hover:scale-105'}`} style={{ backgroundColor: group.shades[1] }}>{group.shades.includes(task.color) && <div className="absolute -bottom-2.5 w-1 h-1 bg-slate-800 dark:bg-white rounded-full opacity-60" />}</button>))}<button onClick={() => setShowColorGrid(!showColorGrid)} className={`${GLASS_BTN_INACTIVE} ${showColorGrid ? GLASS_BTN_ACTIVE : ''} ${isMobile ? 'w-10 h-10 rounded-full' : 'w-8 h-8 rounded-full ml-1'}`}><ChevronUp size={16} className={`transition-transform duration-300 ${showColorGrid ? 'rotate-180' : ''}`} /></button></div>
     </div>
   );
 
@@ -417,25 +418,29 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                 {renderResizeHandle("-top-10 left-1/2 -translate-x-1/2", "ns-resize")}{renderResizeHandle("-bottom-10 left-1/2 -translate-x-1/2", "ns-resize")}{renderResizeHandle("top-1/2 -left-10 -translate-y-1/2", "ew-resize")}{renderResizeHandle("top-1/2 -right-10 -translate-y-1/2", "ew-resize")}
             </div>
           )}
-          {!isEditing && !isResizing && !isPopping && !showDeleteConfirm && (
-             <div className="absolute left-1/2 -translate-x-1/2 top-1/2 pointer-events-none z-30 animate-in fade-in slide-in-from-bottom-2 duration-500" style={{ transform: `translate(-50%, calc(-50% - ${task.size}px - 32px))` }}>
-                <div className={TOOLTIP_BASE_CLASS}>Tap to edit</div><div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-white/90 dark:border-t-slate-800/90 absolute left-1/2 -translate-x-1/2 -bottom-[6px]" />
-             </div>
-          )}
           <div ref={bubbleRef} onClick={handleBubbleClick} className={`bubble-main pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center cursor-text ${isResizing ? 'transition-none' : 'transition-all duration-300'}`} style={{ width: bubbleDiameter, height: bubbleDiameter, background: bubbleGradient, boxShadow: '0 15px 30px rgba(0,0,0,0.3)', ...(isPopping ? { transform: 'translate(-50%, -50%) scale(1.2)', opacity: 0 } : {}) }}>
               <div className="w-[65%] h-[65%] flex items-center justify-center relative">
-                  {isPlaceholderVisible && <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"><span className="placeholder-text text-white font-bold italic opacity-50 text-center leading-[1.1]" style={{ fontSize: `${currentFontSize}px` }}>Task Name</span></div>}
-                  <div 
-                    ref={textRef} 
-                    contentEditable={isEditing} 
-                    suppressContentEditableWarning 
-                    onBlur={(e) => { setIsEditing(false); onUpdate({...task, title: e.currentTarget.innerText.trim()}); }} 
-                    onInput={(e) => { setHasText(!!e.currentTarget.innerText); const newSize = calculateFontSize(currentSizeRef.current, e.currentTarget.innerText || 'Task Name'); e.currentTarget.style.fontSize = `${newSize}px`; const placeholderEl = viewportRef.current?.querySelector('.placeholder-text') as HTMLElement; if (placeholderEl) placeholderEl.style.fontSize = `${newSize}px`; }} 
-                    onKeyDown={handleKeyDown} 
-                    className={`bubble-text-inner w-full text-center text-white font-bold outline-none pointer-events-auto drop-shadow-lg transition-opacity duration-200 z-20`} 
-                    style={{ fontSize: currentFontSize, overflowWrap: 'anywhere', wordBreak: 'break-word', whiteSpace: 'pre-wrap', lineHeight: 1.1, minWidth: '20px' }}
-                  >
-                    {task.title}
+                  <div className="relative w-full flex flex-col items-center justify-center">
+                      {!isEditing && !isResizing && !isPopping && !showDeleteConfirm && (
+                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 pointer-events-none z-30 animate-in fade-in slide-in-from-bottom-1 duration-500 whitespace-nowrap">
+                            <div className={`${TOOLTIP_BASE_CLASS} shadow-sm`}>Tap to edit</div>
+                            <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-white/90 dark:border-t-slate-800/90 absolute left-1/2 -translate-x-1/2 -bottom-[6px]" />
+                         </div>
+                      )}
+                      
+                      {isPlaceholderVisible && <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"><span className="placeholder-text text-white font-bold italic opacity-50 text-center leading-[1.1]" style={{ fontSize: `${currentFontSize}px` }}>Task Name</span></div>}
+                      <div 
+                        ref={textRef} 
+                        contentEditable={isEditing} 
+                        suppressContentEditableWarning 
+                        onBlur={(e) => { setIsEditing(false); onUpdate({...task, title: e.currentTarget.innerText.trim()}); }} 
+                        onInput={(e) => { setHasText(!!e.currentTarget.innerText); const newSize = calculateFontSize(currentSizeRef.current, e.currentTarget.innerText || 'Task Name'); e.currentTarget.style.fontSize = `${newSize}px`; const placeholderEl = viewportRef.current?.querySelector('.placeholder-text') as HTMLElement; if (placeholderEl) placeholderEl.style.fontSize = `${newSize}px`; }} 
+                        onKeyDown={handleKeyDown} 
+                        className={`bubble-text-inner w-full text-center text-white font-bold outline-none pointer-events-auto drop-shadow-lg transition-opacity duration-200 z-20`} 
+                        style={{ fontSize: currentFontSize, overflowWrap: 'anywhere', wordBreak: 'break-word', whiteSpace: 'pre-wrap', lineHeight: 1.1, minWidth: '20px', minHeight: '1.2em' }}
+                      >
+                        {task.title}
+                      </div>
                   </div>
               </div>
           </div>

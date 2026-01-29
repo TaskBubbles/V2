@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { Menu, Plus, LayoutGrid, List, Trash2, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff, AlertTriangle } from 'lucide-react';
 import { Board } from '../types';
@@ -46,14 +47,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
 
   const handleToggleNotifications = async () => {
     const newState = !notificationsEnabled;
+    
     if (newState) {
         const granted = await notificationService.requestPermission();
         if (!granted) {
-            alert('Notifications are blocked by your browser settings.');
+            // Permission was explicitly denied or dismissed
             setNotificationsEnabled(false);
+            if (Notification.permission === 'denied') {
+                alert('Notifications are blocked. Please enable them in your browser settings to receive task alerts.');
+            }
             return;
         }
     }
+    
     setNotificationsEnabled(newState);
   };
 

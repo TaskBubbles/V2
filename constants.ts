@@ -1,4 +1,5 @@
 
+
 // Kuro Glass Palette 4.8
 // 18 Distinct Colors arranged in a 6x3 Grid
 
@@ -10,7 +11,7 @@ export interface ColorGroup {
 export const COLOR_GROUPS: ColorGroup[] = [
     {
         name: 'Red',
-        shades: ['#f472b6', '#ef4444', '#be123c'] 
+        shades: ['#f87171', '#ef4444', '#b91c1c'] 
     },
     {
         name: 'Orange', 

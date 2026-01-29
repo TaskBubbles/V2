@@ -1,4 +1,5 @@
 
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Task, Board } from '../types';
@@ -37,10 +38,10 @@ interface SimulationNode extends d3.SimulationNodeDatum {
 }
 
 const PHYSICS = {
-    centerX: 0.05, 
-    centerY: 0.05,
+    centerX: 0.12, 
+    centerY: 0.12,
     collisionStrength: 1, 
-    vDecay: 0.4, 
+    vDecay: 0.35, 
 };
 
 const MAX_ZOOM_IN = 4;
@@ -799,6 +800,8 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
   const hasCompletedTasks = tasks.some(t => t.completed);
   const isTrashDisabled = !hasCompletedTasks && !isDragging;
 
+  const completedCount = tasks.filter(t => t.completed).length;
+
   return (
     <div ref={wrapperRef} className="w-full h-full relative bg-slate-50 dark:bg-[#020617] overflow-hidden transition-colors duration-500" onPointerDown={ensureAudio}>
       <style>{`
@@ -864,10 +867,14 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
                         ${isTrashDisabled ? 'opacity-40 cursor-default hover:scale-100 active:scale-100 hover:bg-white/40 dark:hover:bg-slate-900/40 hover:text-slate-700 dark:hover:text-white/80' : ''}`}
                       >
                       <div className={`transition-transform duration-300 relative ${isShowingCompleted && !isHoveringTrash && !isTrashDisabled ? 'rotate-[135deg]' : 'rotate-0'}`}>
-                              {isHoveringTrash ? (draggingCompletedTask ? <RefreshCcw size={24} className={isTrashActivated ? 'animate-spin' : ''} style={{ animationDuration: '2s' }} /> : <Trash2 size={24} className={isTrashActivated ? 'animate-bounce' : ''} strokeWidth={isTrashActivated ? 2.5 : 2} />) : <Trash size={22} />}
-                              {isShowingCompleted && !isHoveringTrash && !isTrashDisabled && (
-                                  <div className="absolute -top-3 left-0 w-full h-full flex justify-center gap-1 pointer-events-none">
-                                  <div className="w-1 h-1 bg-current rounded-full opacity-80" /><div className="w-1.5 h-1.5 bg-current rounded-sm opacity-80 translate-y-1" /><div className="w-1 h-1 bg-current rounded-full opacity-80" />
+                              {isHoveringTrash ? (draggingCompletedTask ? <RefreshCcw size={24} className={isTrashActivated ? 'animate-spin' : ''} style={{ animationDuration: '2s' }} /> : <Trash2 size={24} className={isTrashActivated ? 'animate-bounce' : ''} strokeWidth={isTrashActivated ? 2.5 : 2} />) : (
+                                  <div className="relative flex items-center justify-center">
+                                      <Trash size={22} />
+                                      {completedCount > 0 && (
+                                          <div className="absolute inset-0 pt-[5px] flex items-center justify-center pointer-events-none">
+                                              <span className="font-bold leading-none select-none" style={{ fontSize: completedCount > 99 ? '8px' : completedCount > 9 ? '9px' : '10px' }}>{completedCount}</span>
+                                          </div>
+                                      )}
                                   </div>
                               )}
                       </div>
