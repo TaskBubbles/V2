@@ -45,8 +45,6 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const [hasText, setHasText] = useState(!!task.title);
   const [winDim, setWinDim] = useState({ w: window.innerWidth, h: window.innerHeight });
   const isMobile = winDim.w < 768;
-  const maxHeightRef = useRef(window.innerHeight);
-  const lastHeightRef = useRef(window.innerHeight);
 
   // Board Dropdown State
   const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
@@ -75,27 +73,11 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
   useEffect(() => {
     const handleResize = () => {
-        const h = window.innerHeight;
-        const w = window.innerWidth;
-        setWinDim({ w, h });
-        
-        if (h > maxHeightRef.current) maxHeightRef.current = h;
-
-        // Optimized Keyboard Closure Detection: 
-        // Only blur if the height has significantly increased from a previously small height (the keyboard height)
-        const wasKeyboardOpen = lastHeightRef.current < maxHeightRef.current * 0.75;
-        const isNowKeyboardClosed = h > maxHeightRef.current * 0.85;
-
-        if (isEditing && isMobile && wasKeyboardOpen && isNowKeyboardClosed) {
-            if (textRef.current) textRef.current.blur();
-            setIsEditing(false);
-        }
-        
-        lastHeightRef.current = h;
+        setWinDim({ w: window.innerWidth, h: window.innerHeight });
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isEditing, isMobile]);
+  }, []);
 
   useEffect(() => { 
       const t = setTimeout(() => setIsCentered(true), 20); 
@@ -107,8 +89,8 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
 
   useEffect(() => { 
       if (isEditing && textRef.current) {
-          // Focus with a slight delay to ensure the contentEditable is ready
-          const focusTimer = setTimeout(() => {
+          // Use requestAnimationFrame for cleaner focus transition
+          const frame = requestAnimationFrame(() => {
               if (textRef.current && document.activeElement !== textRef.current) {
                   textRef.current.focus();
                   // Move cursor to end
@@ -121,20 +103,10 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                       sel.addRange(range);
                   }
               }
-          }, 100);
-          return () => clearTimeout(focusTimer);
+          });
+          return () => cancelAnimationFrame(frame);
       }
   }, [isEditing]);
-
-  useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-          if (colorSectionRef.current && !colorSectionRef.current.contains(event.target as Node)) {
-             // Optional close logic
-          }
-      };
-      if (showColorGrid) document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showColorGrid]);
 
   useEffect(() => {
     if (textareaRef.current && showDescription) {
@@ -273,7 +245,10 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const fitScale = bubbleDiameter > safeZone ? safeZone / bubbleDiameter : 1;
 
   const initialStyle: React.CSSProperties = startPos ? { left: `${startPos.x}px`, top: `${startPos.y}px`, transform: `translate(-50%, -50%) scale(${startPos.k})` } : { left: '50%', top: '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
-  const centeredStyle: React.CSSProperties = { left: '50%', top: isMobile ? (isEditing ? '40%' : '35%') : '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
+  
+  // FIXED: Stabilized the top position to 35% on mobile regardless of isEditing state.
+  // This prevents the browser from losing focus target during the layout shift.
+  const centeredStyle: React.CSSProperties = { left: '50%', top: isMobile ? '35%' : '50%', transform: `translate(-50%, -50%) scale(${fitScale})` };
 
   const controlsClass = isMobile 
     ? `fixed bottom-0 left-0 w-full px-5 pt-6 pb-[max(2rem,calc(env(safe-area-inset-bottom)+1.5rem))] rounded-t-[2.5rem] z-[60] max-h-[85vh] flex flex-col no-scrollbar ${GLASS_PANEL_CLASS}`
@@ -425,6 +400,8 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                     ref={textRef} 
                     contentEditable={isEditing} 
                     suppressContentEditableWarning 
+                    inputMode="text"
+                    spellCheck={false}
                     onBlur={(e) => { 
                         setIsEditing(false); 
                         onUpdate({...task, title: e.currentTarget.innerText.trim()}); 
