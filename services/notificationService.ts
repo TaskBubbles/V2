@@ -2,6 +2,7 @@
 
 import { Task } from '../types';
 import { audioService } from './audioService';
+import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE } from '../constants';
 
 class NotificationService {
   // We store a composite key: "taskId_dueDateISO" to ensure that if a date changes, 
@@ -115,30 +116,45 @@ class NotificationService {
       }
   }
 
-  private getBubbleIcon(color: string): string {
+  private getBubbleIcon(task: Task): string {
+    const minSize = MIN_BUBBLE_SIZE || 20;
+    const maxSize = MAX_BUBBLE_SIZE || 220;
+    
+    // Map task size to icon radius (keep padding)
+    // Viewbox 192. Center 96. Max radius ~84 to allow stroke and glow
+    const minR = 40;
+    const maxR = 84;
+    
+    // Clamp size and normalize
+    const size = Math.max(minSize, Math.min(maxSize, task.size));
+    const t = (size - minSize) / (maxSize - minSize);
+    const r = minR + t * (maxR - minR);
+
     // Generate an SVG string representing the bubble
+    // We add a radial gradient and stroke to mimic the in-app bubble
     const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
-      <circle cx="96" cy="96" r="88" fill="${color}" />
-      <circle cx="96" cy="96" r="88" fill="url(#g)" opacity="0.3" />
       <defs>
         <radialGradient id="g" cx="30%" cy="30%" r="70%">
-          <stop offset="0%" stop-color="#fff" stop-opacity="0.8"/>
-          <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+          <stop offset="0%" stop-color="white" stop-opacity="0.8"/>
+          <stop offset="100%" stop-color="${task.color}" stop-opacity="0.3"/>
         </radialGradient>
       </defs>
+      <circle cx="96" cy="96" r="${r}" fill="${task.color}" />
+      <circle cx="96" cy="96" r="${r}" fill="url(#g)" />
+      <circle cx="96" cy="96" r="${r}" fill="none" stroke="white" stroke-width="4" opacity="0.7" />
     </svg>`.trim();
     // Convert to Base64 Data URI
     return `data:image/svg+xml;base64,${btoa(svg)}`;
   }
 
   private async sendNotification(task: Task) {
-    const title = task.title; 
-    const iconUrl = this.getBubbleIcon(task.color);
+    const title = task.title || "Untitled Task"; 
+    const iconUrl = this.getBubbleIcon(task);
 
     // "requireInteraction" keeps the notification on screen until the user dismisses it (Chrome/Edge)
     const options: NotificationOptions & { requireInteraction?: boolean; renotify?: boolean; vibrate?: number[] } = {
-        body: "Tap to open Task Bubbles",
+        body: "Tap to open",
         icon: iconUrl, 
         badge: './favicon.svg',
         tag: task.id, // Replaces any existing notification for this task ID
@@ -155,7 +171,7 @@ class NotificationService {
         
         let notificationShown = false;
 
-        // Try Service Worker first for better background handling/banner persistence
+        // Try Service Worker first for better background handling/banner persistence on mobile
         if ('serviceWorker' in navigator) {
             const reg = await navigator.serviceWorker.getRegistration();
             if (reg && reg.active) {
