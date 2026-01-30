@@ -4,6 +4,14 @@ import { Task } from '../types';
 import { audioService } from './audioService';
 import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE } from '../constants';
 
+interface NotificationPayload {
+    title: string;
+    body: string;
+    icon: string;
+    timestamp: number;
+    tag: string;
+}
+
 class NotificationService {
   private notifiedEvents: Set<string> = new Set();
   private enabled: boolean = false;
@@ -47,6 +55,7 @@ class NotificationService {
     const now = new Date();
     const lookbackWindow = 24 * 60 * 60 * 1000; 
     
+    // 1. In-App / Foreground polling (Existing Logic)
     for (const task of tasks) {
         if (task.completed || !task.dueDate) continue;
 
@@ -55,9 +64,10 @@ class NotificationService {
         
         const eventKey = `${task.id}_${task.dueDate}`;
 
+        // If it's due now or recently due, and we haven't notified yet
         if (timeDiff >= 0 && timeDiff < lookbackWindow) {
             if (!this.notifiedEvents.has(eventKey)) {
-                await this.sendNotification(task);
+                await this.sendNotificationNow(task);
                 this.notifiedEvents.add(eventKey);
                 this.saveNotifiedEvents();
             }
@@ -65,6 +75,30 @@ class NotificationService {
     }
 
     this.cleanupStaleEvents(tasks);
+    
+    // 2. Schedule Future Notifications with Service Worker (For closed app support)
+    this.syncWithServiceWorker(tasks);
+  }
+
+  private async syncWithServiceWorker(tasks: Task[]) {
+      if (!('serviceWorker' in navigator)) return;
+      const reg = await navigator.serviceWorker.ready;
+      if (!reg || !reg.active) return;
+
+      const futureTasks = tasks.filter(t => !t.completed && t.dueDate && new Date(t.dueDate).getTime() > Date.now());
+      
+      const payload: NotificationPayload[] = futureTasks.map(task => ({
+          title: task.title || "Untitled Task",
+          body: "It's time to complete this task!",
+          icon: this.getBubbleIcon(task),
+          timestamp: new Date(task.dueDate!).getTime(),
+          tag: task.id
+      }));
+
+      reg.active.postMessage({
+          type: 'SCHEDULE_NOTIFICATIONS',
+          payload: payload
+      });
   }
 
   private cleanupStaleEvents(tasks: Task[]) {
@@ -109,12 +143,10 @@ class NotificationService {
     return `data:image/svg+xml;base64,${btoa(svg)}`;
   }
 
-  private async sendNotification(task: Task) {
+  private async sendNotificationNow(task: Task) {
     const title = task.title || "Untitled Task"; 
     const iconUrl = this.getBubbleIcon(task);
 
-    // Removed silent: true to allow visual banners to appear.
-    // Some OS/Browsers hide banners if silent is true.
     const options: NotificationOptions & { requireInteraction?: boolean; renotify?: boolean; vibrate?: number[] } = {
         body: "Time to complete this task!",
         icon: iconUrl, 
@@ -123,13 +155,10 @@ class NotificationService {
         requireInteraction: true, 
         renotify: true,
         data: { taskId: task.id },
-        // Vibration pattern: SOS-like but faster (Short Short Long) to wake up attention
         vibrate: [100, 50, 100, 50, 300]
     };
 
     try {
-        // We play our own sound, but removing 'silent: true' might play default system sound too.
-        // This is a trade-off to ensure the banner shows up.
         audioService.playAlert();
 
         let swReg: ServiceWorkerRegistration | undefined;
@@ -138,10 +167,8 @@ class NotificationService {
         }
 
         if (swReg) {
-            // Using Service Worker is critical for Android notifications to work properly
             await swReg.showNotification(title, options);
         } else {
-            // Fallback
             const n = new Notification(title, options);
             n.onclick = () => { window.focus(); n.close(); };
         }
