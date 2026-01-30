@@ -45,7 +45,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault();
+      // Do NOT preventDefault if we want the browser to automatically suggest installation (e.g. mini-infobar)
+      // e.preventDefault(); 
       setDeferredPrompt(e);
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -169,7 +170,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
                         <div className="flex flex-col items-start"><span className="font-bold text-sm">Delete All Data</span><span className="text-[10px] opacity-80 font-medium">Clear local storage</span></div>
                     </button>
 
-                    <div className="pt-4 mt-4 border-t border-slate-200 dark:border-white/10"><p className="text-center text-[10px] font-bold tracking-widest text-slate-400 dark:text-white/20 uppercase">Task Bubbles v1.5.0</p></div>
+                    <div className="pt-4 mt-4 border-t border-slate-200 dark:border-white/10"><p className="text-center text-[10px] font-bold tracking-widest text-slate-400 dark:text-white/20 uppercase">Task Bubbles v1.6.0</p></div>
                 </div>
             </div>
         </div>

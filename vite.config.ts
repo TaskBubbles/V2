@@ -1,3 +1,5 @@
+
+
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -33,13 +35,13 @@ export default defineConfig({
         icons: [
           {
             src: 'favicon.svg',
-            sizes: 'any',
+            sizes: '192x192 512x512',
             type: 'image/svg+xml',
             purpose: 'any'
           },
           {
             src: 'favicon.svg',
-            sizes: 'any',
+            sizes: '192x192 512x512',
             type: 'image/svg+xml',
             purpose: 'maskable'
           }

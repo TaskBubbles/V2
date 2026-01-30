@@ -1,3 +1,4 @@
+import * as d3 from 'd3';
 import { Task } from '../types';
 import { audioService } from './audioService';
 import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE } from '../constants';
@@ -157,24 +158,55 @@ class NotificationService {
     const minSize = MIN_BUBBLE_SIZE || 20;
     const maxSize = MAX_BUBBLE_SIZE || 220;
     const minR = 40;
-    const maxR = 84;
+    const maxR = 90;
     const size = Math.max(minSize, Math.min(maxSize, task.size));
     const t = (size - minSize) / (maxSize - minSize);
     const r = minR + t * (maxR - minR);
 
-    // Transparent background, higher opacity stroke
+    // Matches BubbleCanvas gradient logic
+    const color1 = task.color;
+    const color2 = d3.color(task.color)?.brighter(0.8)?.toString() || task.color;
+
+    // Simple text wrapping heuristic for SVG
+    const words = (task.title || "").split(/\s+/);
+    const lines: string[] = [];
+    let currentLine = words[0] || "";
+    
+    for (let i = 1; i < words.length; i++) {
+        // Approximate char limit per line for the icon
+        if ((currentLine + " " + words[i]).length <= 12) {
+             currentLine += " " + words[i];
+        } else {
+             lines.push(currentLine);
+             currentLine = words[i];
+             if (lines.length >= 2) break; // Limit lines to fit nicely
+        }
+    }
+    if (currentLine) lines.push(currentLine);
+    const displayLines = lines.slice(0, 3);
+    
+    const fontSize = Math.max(16, 26 - (displayLines.length * 3)); 
+    const lineHeight = fontSize * 1.2;
+    const totalHeight = (displayLines.length - 1) * lineHeight;
+    const startY = 96 - (totalHeight / 2);
+
+    const textElements = displayLines.map((line, i) => {
+        const safeLine = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<text x="96" y="${startY + (i * lineHeight)}" text-anchor="middle" dominant-baseline="middle" fill="white" font-family="system-ui, -apple-system, sans-serif" font-weight="bold" font-size="${fontSize}" style="text-shadow: 0 1px 3px rgba(0,0,0,0.4);">${safeLine}</text>`;
+    }).join('');
+
     const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
       <defs>
-        <radialGradient id="g" cx="30%" cy="30%" r="70%">
-          <stop offset="0%" stop-color="white" stop-opacity="0.9"/>
-          <stop offset="100%" stop-color="${task.color}" stop-opacity="0.6"/>
-        </radialGradient>
+        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="${color1}" stop-opacity="1"/>
+          <stop offset="100%" stop-color="${color2}" stop-opacity="1"/>
+        </linearGradient>
       </defs>
-      <circle cx="96" cy="96" r="${r}" fill="${task.color}" opacity="0.9"/>
-      <circle cx="96" cy="96" r="${r}" fill="url(#g)" />
-      <circle cx="96" cy="96" r="${r}" fill="none" stroke="white" stroke-width="6" opacity="0.8" />
+      <circle cx="96" cy="96" r="${r}" fill="url(#grad)" />
+      ${textElements}
     </svg>`.trim();
+    
     return `data:image/svg+xml;base64,${btoa(svg)}`;
   }
 
