@@ -115,34 +115,16 @@ class NotificationService {
       }
   }
 
-  private getBubbleIcon(color: string): string {
-    // Generate an SVG string representing the bubble
-    const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
-      <circle cx="96" cy="96" r="88" fill="${color}" />
-      <circle cx="96" cy="96" r="88" fill="url(#g)" opacity="0.3" />
-      <defs>
-        <radialGradient id="g" cx="30%" cy="30%" r="70%">
-          <stop offset="0%" stop-color="#fff" stop-opacity="0.8"/>
-          <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
-        </radialGradient>
-      </defs>
-    </svg>`.trim();
-    // Convert to Base64 Data URI
-    return `data:image/svg+xml;base64,${btoa(svg)}`;
-  }
-
   private async sendNotification(task: Task) {
-    const title = task.title; 
-    const iconUrl = this.getBubbleIcon(task.color);
-
+    const title = `Time's up! ⏰`;
+    
     // "requireInteraction" keeps the notification on screen until the user dismisses it (Chrome/Edge)
-    const options: NotificationOptions & { requireInteraction?: boolean; renotify?: boolean; vibrate?: number[] } = {
-        body: "Tap to open Task Bubbles",
-        icon: iconUrl, 
+    const options: NotificationOptions & { requireInteraction?: boolean; renotify?: boolean } = {
+        body: `${task.title}\nis now due.`,
+        icon: './favicon.svg', 
         badge: './favicon.svg',
         tag: task.id, // Replaces any existing notification for this task ID
-        silent: true, // We handle audio manually for the custom chord
+        silent: false, // We handle audio manually for better control
         requireInteraction: true, 
         renotify: true, // Triggers alert again even if tag matches (important for repeat reminders or if notification is still in tray)
         vibrate: [200, 100, 200, 100, 200, 100, 400], // Strong vibration pattern
@@ -150,7 +132,8 @@ class NotificationService {
     };
 
     try {
-        // Play custom 3-pop major chord
+        // Play sound inside the app context
+        // We attempt to play audio even if the notification fails or is silent
         audioService.playAlert();
         
         let notificationShown = false;
