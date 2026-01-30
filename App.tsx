@@ -9,6 +9,7 @@ import { Task, Board, User } from './types';
 import { COLORS, FAB_BASE_CLASS, GLASS_PANEL_CLASS, GLASS_MENU_ITEM, GLASS_MENU_ITEM_ACTIVE, GLASS_MENU_ITEM_INACTIVE, GLASS_BTN_INACTIVE } from './constants';
 import { LayoutList } from 'lucide-react';
 import { notificationService } from './services/notificationService';
+import { audioService } from './services/audioService';
 
 const App: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>(() => {
@@ -64,7 +65,7 @@ const App: React.FC = () => {
     }
   }, [theme]);
 
-  // Handle Notifications (Background/Foreground Bubble Opening)
+  // Handle Notifications (Background/Foreground Bubble Opening & Actions)
   useEffect(() => {
     const handleHighlightTask = (taskId: string) => {
       const task = tasks.find(t => t.id === taskId);
@@ -92,10 +93,41 @@ const App: React.FC = () => {
       }
     };
 
+    const handleCompleteTask = (taskId: string) => {
+        let taskUpdated = false;
+        setTasks(prev => prev.map(t => {
+            if (t.id === taskId && !t.completed) {
+                taskUpdated = true;
+                return { ...t, completed: true };
+            }
+            return t;
+        }));
+        
+        if (taskUpdated) {
+            audioService.playPop();
+            // Switch to board to see the effect
+            const task = tasks.find(t => t.id === taskId);
+            if (task) {
+                 if (task.boardId !== currentBoardId && currentBoardId !== 'ALL') {
+                      setCurrentBoardId(task.boardId);
+                 }
+                 // If not showing completed, maybe show it briefly or toast? 
+                 // For now, let's enable showCompleted so user sees the change
+                 setShowCompleted(true);
+            }
+        }
+    };
+
     // A. Check URL Params (New Window / Page Load)
     const params = new URLSearchParams(window.location.search);
     const highlightId = params.get('highlight');
-    if (highlightId) {
+    const action = params.get('action');
+    const paramTaskId = params.get('taskId');
+
+    if (action === 'complete' && paramTaskId) {
+        handleCompleteTask(paramTaskId);
+        window.history.replaceState({}, '', window.location.pathname);
+    } else if (highlightId) {
         handleHighlightTask(highlightId);
         window.history.replaceState({}, '', window.location.pathname);
     }
@@ -104,6 +136,8 @@ const App: React.FC = () => {
     const handleMessage = (event: MessageEvent) => {
         if (event.data && event.data.type === 'HIGHLIGHT_TASK' && event.data.taskId) {
             handleHighlightTask(event.data.taskId);
+        } else if (event.data && event.data.type === 'COMPLETE_TASK' && event.data.taskId) {
+            handleCompleteTask(event.data.taskId);
         }
     };
 

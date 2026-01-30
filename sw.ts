@@ -93,7 +93,8 @@ async function checkAndNotify() {
                 data: { url: './', taskId: data.tag },
                 requireInteraction: true,
                 renotify: true,
-                vibrate: [100, 50, 100, 50, 300]
+                vibrate: [100, 50, 100, 50, 300],
+                actions: data.actions || []
             } as any);
         }
     }
@@ -134,7 +135,8 @@ async function scheduleNotifications(payloads: any[]) {
                         // @ts-ignore
                         showTrigger: trigger,
                         renotify: true,
-                        requireInteraction: true
+                        requireInteraction: true,
+                        actions: data.actions || []
                     });
                 }
              } catch (e) {
@@ -148,6 +150,8 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const taskId = event.notification.data?.taskId;
   const baseUrl = event.notification.data?.url || './';
+  // @ts-ignore
+  const action = event.action;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
@@ -155,8 +159,10 @@ self.addEventListener('notificationclick', (event) => {
         for (const client of clientList) {
             if ('focus' in client) {
                 return (client as WindowClient).focus().then((c) => {
-                    // Once focused, tell the app to highlight the task
-                    if (taskId) {
+                    // Send message based on action
+                    if (action === 'complete' && taskId) {
+                        c.postMessage({ type: 'COMPLETE_TASK', taskId });
+                    } else if (taskId) {
                         c.postMessage({ type: 'HIGHLIGHT_TASK', taskId });
                     }
                 });
@@ -165,10 +171,15 @@ self.addEventListener('notificationclick', (event) => {
         
         // 2. If no window open, open a new one
         if (self.clients.openWindow) {
-            // Append query param so the app knows what to highlight on load
             const url = new URL(baseUrl, self.location.href);
             if (taskId) {
-                url.searchParams.set('highlight', taskId);
+                // Pass action via query param
+                if (action === 'complete') {
+                    url.searchParams.set('action', 'complete');
+                } else {
+                    url.searchParams.set('highlight', taskId);
+                }
+                url.searchParams.set('taskId', taskId);
             }
             return self.clients.openWindow(url.href).then(() => {});
         }

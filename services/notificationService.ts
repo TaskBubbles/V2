@@ -1,8 +1,12 @@
-
-
 import { Task } from '../types';
 import { audioService } from './audioService';
 import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE } from '../constants';
+
+interface NotificationAction {
+  action: string;
+  title: string;
+  icon?: string;
+}
 
 interface NotificationPayload {
     title: string;
@@ -10,6 +14,7 @@ interface NotificationPayload {
     icon: string;
     timestamp: number;
     tag: string;
+    actions?: NotificationAction[];
 }
 
 class NotificationService {
@@ -90,11 +95,14 @@ class NotificationService {
           const futureTasks = tasks.filter(t => !t.completed && t.dueDate);
           
           const payload: NotificationPayload[] = futureTasks.map(task => ({
-              title: task.title || "Untitled Task",
-              body: "It's time to complete this task!",
+              title: task.title || "Untitled Bubble",
+              body: "⏰ It's time to pop this bubble!",
               icon: this.getBubbleIcon(task),
               timestamp: new Date(task.dueDate!).getTime(),
-              tag: task.id
+              tag: task.id,
+              actions: [
+                  { action: 'complete', title: 'Mark as Done' }
+              ]
           }));
 
           // Send to SW for scheduling/storage
@@ -154,35 +162,38 @@ class NotificationService {
     const t = (size - minSize) / (maxSize - minSize);
     const r = minR + t * (maxR - minR);
 
+    // Transparent background, higher opacity stroke
     const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
       <defs>
         <radialGradient id="g" cx="30%" cy="30%" r="70%">
-          <stop offset="0%" stop-color="white" stop-opacity="0.8"/>
-          <stop offset="100%" stop-color="${task.color}" stop-opacity="0.3"/>
+          <stop offset="0%" stop-color="white" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="${task.color}" stop-opacity="0.6"/>
         </radialGradient>
       </defs>
-      <rect width="100%" height="100%" fill="#020617"/>
-      <circle cx="96" cy="96" r="${r}" fill="${task.color}" />
+      <circle cx="96" cy="96" r="${r}" fill="${task.color}" opacity="0.9"/>
       <circle cx="96" cy="96" r="${r}" fill="url(#g)" />
-      <circle cx="96" cy="96" r="${r}" fill="none" stroke="white" stroke-width="4" opacity="0.7" />
+      <circle cx="96" cy="96" r="${r}" fill="none" stroke="white" stroke-width="6" opacity="0.8" />
     </svg>`.trim();
     return `data:image/svg+xml;base64,${btoa(svg)}`;
   }
 
   private async sendNotificationNow(task: Task) {
-    const title = task.title || "Untitled Task"; 
+    const title = task.title || "Untitled Bubble"; 
     const iconUrl = this.getBubbleIcon(task);
 
-    const options: NotificationOptions & { requireInteraction?: boolean; renotify?: boolean; vibrate?: number[] } = {
-        body: "Time to complete this task!",
+    const options: NotificationOptions & { requireInteraction?: boolean; renotify?: boolean; vibrate?: number[]; actions?: NotificationAction[] } = {
+        body: "⏰ It's time to pop this bubble!",
         icon: iconUrl, 
         badge: './favicon.svg',
         tag: task.id, 
         requireInteraction: true, 
         renotify: true,
         data: { taskId: task.id },
-        vibrate: [100, 50, 100, 50, 300]
+        vibrate: [100, 50, 100, 50, 300],
+        actions: [
+            { action: 'complete', title: 'Mark as Done' },
+        ]
     };
 
     try {
