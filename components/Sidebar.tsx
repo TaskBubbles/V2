@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { Menu, Plus, LayoutGrid, List, Trash2, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff, AlertTriangle, Download } from 'lucide-react';
+import { Menu, Plus, LayoutGrid, List, Trash2, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff, AlertTriangle } from 'lucide-react';
 import { Board } from '../types';
 import { audioService } from '../services/audioService';
 import { notificationService } from '../services/notificationService';
@@ -37,28 +37,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
   const [isCreating, setIsCreating] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => { try { return localStorage.getItem('soundEnabled') !== 'false'; } catch { return true; } });
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => { try { return localStorage.getItem('notificationsEnabled') === 'true'; } catch { return false; } });
-  const [installPrompt, setInstallPrompt] = useState<any>(null);
 
   useEffect(() => { localStorage.setItem('soundEnabled', String(soundEnabled)); audioService.setMuted(!soundEnabled); }, [soundEnabled]);
   useEffect(() => { localStorage.setItem('notificationsEnabled', String(notificationsEnabled)); notificationService.setEnabled(notificationsEnabled); }, [notificationsEnabled]);
-
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault();
-      setInstallPrompt(e);
-    };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-  }, []);
-
-  const handleInstallClick = async () => {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setInstallPrompt(null);
-    }
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault(); if (newBoardName.trim()) { onCreateBoard(newBoardName); setNewBoardName(''); setIsCreating(false); }
@@ -77,7 +58,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
             return;
         }
     }
-    
     setNotificationsEnabled(newState);
   };
 
@@ -137,11 +117,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
           </nav>
           
           <div className="pt-4 border-t border-slate-200 dark:border-white/10 mt-2 space-y-1.5">
-            {installPrompt && (
-                <button onClick={handleInstallClick} className={`${GLASS_MENU_ITEM} bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/20 animate-pulse`}>
-                    <Download size={18} /><span className="font-bold text-sm">Install App</span>
-                </button>
-            )}
             <button onClick={() => { setIsSettingsOpen(true); setIsOpen(false); }} className={`${GLASS_MENU_ITEM} ${GLASS_MENU_ITEM_INACTIVE}`}>
                 <Settings size={18} /><span className="font-medium text-sm">Settings</span>
             </button>
