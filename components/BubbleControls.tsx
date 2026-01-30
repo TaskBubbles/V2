@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { v4 as uuidv4 } from 'uuid';
@@ -310,7 +311,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                     {subtasks.map(sub => (
                         <div key={sub.id} className="flex items-center gap-2 p-2 hover:bg-white/30 dark:hover:bg-white/5 rounded-lg group">
                             <button onClick={() => toggleSubtask(sub.id)} className={`shrink-0 transition-colors ${sub.completed ? 'text-green-500 dark:text-green-400' : 'text-slate-400 dark:text-white/30 hover:text-slate-600 dark:hover:text-white/60'}`}>{sub.completed ? <CheckSquare size={16} /> : <Square size={16} />}</button>
-                            <input type="text" value={sub.title} onChange={(e) => onUpdate({ ...task, subtasks: subtasks.map(s => s.id === sub.id ? { ...s, title: e.target.value } : s) })} className={`flex-1 bg-transparent outline-none text-sm ${sub.completed ? 'text-slate-500 dark:text-white/40 line-through' : 'text-slate-900 dark:text-white/90'}` উপদেশ} />
+                            <input type="text" value={sub.title} onChange={(e) => onUpdate({ ...task, subtasks: subtasks.map(s => s.id === sub.id ? { ...s, title: e.target.value } : s) })} className={`flex-1 bg-transparent outline-none text-sm ${sub.completed ? 'text-slate-500 dark:text-white/40 line-through' : 'text-slate-900 dark:text-white/90'}`} />
                             <button onClick={() => deleteSubtask(sub.id)} className="opacity-0 group-hover:opacity-100 text-slate-400 dark:text-white/20 hover:text-red-500 dark:hover:text-red-400 transition-all px-1"><X size={14} /></button>
                         </div>
                     ))}

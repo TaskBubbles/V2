@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { Menu, Plus, LayoutGrid, List, Trash2, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff, AlertTriangle } from 'lucide-react';
+import { Menu, Plus, LayoutGrid, List, Trash2, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff, AlertTriangle, Download, Smartphone } from 'lucide-react';
 import { Board } from '../types';
 import { audioService } from '../services/audioService';
 import { notificationService } from '../services/notificationService';
@@ -37,9 +37,29 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
   const [isCreating, setIsCreating] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => { try { return localStorage.getItem('soundEnabled') !== 'false'; } catch { return true; } });
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => { try { return localStorage.getItem('notificationsEnabled') === 'true'; } catch { return false; } });
+  
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => { localStorage.setItem('soundEnabled', String(soundEnabled)); audioService.setMuted(!soundEnabled); }, [soundEnabled]);
   useEffect(() => { localStorage.setItem('notificationsEnabled', String(notificationsEnabled)); notificationService.setEnabled(notificationsEnabled); }, [notificationsEnabled]);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault(); if (newBoardName.trim()) { onCreateBoard(newBoardName); setNewBoardName(''); setIsCreating(false); }
@@ -51,21 +71,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
     if (newState) {
         const granted = await notificationService.requestPermission();
         if (!granted) {
-            // Permission was explicitly denied or dismissed
             setNotificationsEnabled(false);
             if (Notification.permission === 'denied') {
-                alert('Notifications are blocked. Please enable them in your browser settings to receive task alerts.');
+                alert('Notifications are blocked. Please enable them in your browser settings.');
             }
             return;
         }
     }
-    
     setNotificationsEnabled(newState);
   };
 
   const handleDeleteData = () => {
     if (window.confirm('Are you sure you want to delete all data? This cannot be undone.')) {
-      try { localStorage.clear(); window.location.href = window.location.href; } catch (e) { alert('Failed to delete data.'); }
+      try { localStorage.clear(); window.location.reload(); } catch (e) { alert('Failed to delete data.'); }
     }
   };
 
@@ -116,6 +134,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
             <button onClick={() => { onSelectBoard('COMPLETED'); setIsOpen(false); }} className={`${GLASS_MENU_ITEM} ${currentBoardId === 'COMPLETED' ? GLASS_MENU_ITEM_ACTIVE : GLASS_MENU_ITEM_INACTIVE}`}>
                 <Trash2 size={18} /><span className="font-medium text-sm">Completed Tasks</span>
             </button>
+            
+            {deferredPrompt && (
+              <div className="mt-6 px-1">
+                 <button onClick={handleInstallClick} className="w-full p-3 rounded-2xl bg-indigo-600/90 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-3 transition-all active:scale-95 border border-indigo-400/50">
+                    <div className="p-1.5 bg-white/20 rounded-lg"><Download size={18} /></div>
+                    <div className="flex flex-col items-start">
+                        <span className="font-bold text-sm leading-none">Install App</span>
+                        <span className="text-[10px] opacity-80 leading-tight mt-1">Get the full experience</span>
+                    </div>
+                 </button>
+              </div>
+            )}
           </nav>
           <div className="pt-4 border-t border-slate-200 dark:border-white/10 mt-2 space-y-1.5">
             <button onClick={() => { setIsSettingsOpen(true); setIsOpen(false); }} className={`${GLASS_MENU_ITEM} ${GLASS_MENU_ITEM_INACTIVE}`}>
@@ -139,7 +169,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
                         <div className="flex flex-col items-start"><span className="font-bold text-sm">Delete All Data</span><span className="text-[10px] opacity-80 font-medium">Clear local storage</span></div>
                     </button>
 
-                    <div className="pt-4 mt-4 border-t border-slate-200 dark:border-white/10"><p className="text-center text-[10px] font-bold tracking-widest text-slate-400 dark:text-white/20 uppercase">Task Bubbles v1.4.3</p></div>
+                    <div className="pt-4 mt-4 border-t border-slate-200 dark:border-white/10"><p className="text-center text-[10px] font-bold tracking-widest text-slate-400 dark:text-white/20 uppercase">Task Bubbles v1.5.0</p></div>
                 </div>
             </div>
         </div>

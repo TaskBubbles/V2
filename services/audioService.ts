@@ -1,4 +1,5 @@
 
+
 class AudioService {
   private ctx: AudioContext | null = null;
   private isMuted: boolean = false;
@@ -99,29 +100,32 @@ class AudioService {
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     
     const t = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
     
-    // Gentle Double Beep
-    osc.type = 'sine';
-    const freq = 880; // A5
-    
-    // Beep 1
-    osc.frequency.setValueAtTime(freq, t);
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.1, t + 0.05);
-    gain.gain.linearRampToValueAtTime(0, t + 0.2);
-    
-    // Beep 2
-    osc.frequency.setValueAtTime(freq, t + 0.25);
-    gain.gain.setValueAtTime(0, t + 0.25);
-    gain.gain.linearRampToValueAtTime(0.1, t + 0.3);
-    gain.gain.linearRampToValueAtTime(0, t + 0.5);
+    // Major Chord of Pops: G4, B4, D5
+    // Frequencies: 392.00, 493.88, 587.33
+    const freqs = [392.00, 493.88, 587.33];
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.6);
+    freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const start = t + (i * 0.08); // Staggered entry 80ms apart
+
+        osc.type = 'sine';
+        // Pop effect: pitch sweeps up quickly
+        osc.frequency.setValueAtTime(freq, start);
+        osc.frequency.exponentialRampToValueAtTime(freq * 2.2, start + 0.15); 
+        
+        // Amplitude envelope: sharp attack, quick decay
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.4, start + 0.01); 
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.15);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.start(start);
+        osc.stop(start + 0.2);
+    });
   }
 }
 
