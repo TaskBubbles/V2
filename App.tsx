@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { BubbleCanvas } from './components/BubbleCanvas';
@@ -7,7 +6,7 @@ import { Sidebar } from './components/Sidebar';
 import { TaskListView } from './components/TaskListView';
 import { Task, Board, User } from './types';
 import { COLORS, FAB_BASE_CLASS, GLASS_PANEL_CLASS, GLASS_MENU_ITEM, GLASS_MENU_ITEM_ACTIVE, GLASS_MENU_ITEM_INACTIVE, GLASS_BTN_INACTIVE } from './constants';
-import { LayoutList, Download, Bell, X } from 'lucide-react';
+import { LayoutList } from 'lucide-react';
 import { notificationService } from './services/notificationService';
 
 const App: React.FC = () => {
@@ -41,11 +40,6 @@ const App: React.FC = () => {
   const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
   const [dragHoveredBoardId, setDragHoveredBoardId] = useState<string | null>(null);
   
-  // PWA & Notification State
-  const [installPrompt, setInstallPrompt] = useState<any>(null);
-  const [showInstallBanner, setShowInstallBanner] = useState(false);
-  const [showNotificationRequest, setShowNotificationRequest] = useState(false);
-  
   const boardMenuRef = useRef<HTMLDivElement>(null);
   const boardButtonRef = useRef<HTMLButtonElement>(null);
   const menuWasOpenOnDown = useRef(false);
@@ -69,33 +63,12 @@ const App: React.FC = () => {
     }
   }, [theme]);
 
-  // Check notifications and PWA install capability
   useEffect(() => {
-    // Notification Loop
     const interval = setInterval(() => {
         notificationService.checkAndNotify(tasks);
     }, 30000);
     notificationService.checkAndNotify(tasks);
-
-    // PWA Install Listener
-    const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault();
-      setInstallPrompt(e);
-      setShowInstallBanner(true);
-    };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    // Notification Permission Check
-    // If permission is default, prompt user (unless they previously dismissed it in this session?)
-    if ('Notification' in window && Notification.permission === 'default') {
-        const t = setTimeout(() => setShowNotificationRequest(true), 3000);
-        return () => clearTimeout(t);
-    }
-
-    return () => {
-        clearInterval(interval);
-        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
+    return () => clearInterval(interval);
   }, [tasks]);
 
   useEffect(() => {
@@ -250,29 +223,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleInstallClick = async () => {
-    if (!installPrompt) return;
-    try {
-        await installPrompt.prompt();
-        const { outcome } = await installPrompt.userChoice;
-        if (outcome === 'accepted') {
-            setInstallPrompt(null);
-            setShowInstallBanner(false);
-        }
-    } catch (e) {
-        console.log("Install prompt failed or dismissed");
-    }
-  };
-
-  const handleEnableNotifications = async () => {
-      const granted = await notificationService.requestPermission();
-      setShowNotificationRequest(false);
-      if (granted) {
-          // Play a sound to confirm
-          notificationService.testNotification();
-      }
-  };
-
   const editingTask = useMemo(() => tasks.find(t => t.id === editingTaskId) || null, [tasks, editingTaskId]);
   
   return (
@@ -325,41 +275,6 @@ const App: React.FC = () => {
 
       {!editingTaskId && (
         <>
-            {/* Install Banner */}
-            {showInstallBanner && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-500">
-                    <div className={`${GLASS_PANEL_CLASS} rounded-full py-2 px-4 flex items-center gap-3 pr-2`}>
-                        <div className="flex flex-col">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white">Install App</span>
-                        </div>
-                        <button onClick={handleInstallClick} className="bg-blue-600 hover:bg-blue-500 text-white rounded-full px-3 py-1 text-xs font-bold transition-colors">
-                            Install
-                        </button>
-                        <button onClick={() => setShowInstallBanner(false)} className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
-                            <X size={14} className="text-slate-500 dark:text-white/50" />
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Notification Permission Banner */}
-            {showNotificationRequest && !showInstallBanner && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-500">
-                    <div className={`${GLASS_PANEL_CLASS} rounded-full py-2 px-4 flex items-center gap-3 pr-2`}>
-                         <div className="flex items-center gap-2">
-                             <Bell size={14} className="text-blue-500 animate-pulse" />
-                             <span className="text-xs font-bold text-slate-900 dark:text-white">Enable Reminders?</span>
-                         </div>
-                         <button onClick={handleEnableNotifications} className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-full px-3 py-1 text-xs font-bold transition-colors">
-                            Allow
-                         </button>
-                         <button onClick={() => setShowNotificationRequest(false)} className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
-                            <X size={14} className="text-slate-500 dark:text-white/50" />
-                         </button>
-                    </div>
-                </div>
-            )}
-
             <div className="absolute top-6 right-6 z-40 animate-in slide-in-from-top-10 fade-in duration-500">
                 <button 
                     onClick={() => {

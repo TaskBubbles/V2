@@ -51,6 +51,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
     if (newState) {
         const granted = await notificationService.requestPermission();
         if (!granted) {
+            // Permission was explicitly denied or dismissed
             setNotificationsEnabled(false);
             if (Notification.permission === 'denied') {
                 alert('Notifications are blocked. Please enable them in your browser settings to receive task alerts.');
@@ -58,6 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
             return;
         }
     }
+    
     setNotificationsEnabled(newState);
   };
 
@@ -115,7 +117,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
                 <Trash2 size={18} /><span className="font-medium text-sm">Completed Tasks</span>
             </button>
           </nav>
-          
           <div className="pt-4 border-t border-slate-200 dark:border-white/10 mt-2 space-y-1.5">
             <button onClick={() => { setIsSettingsOpen(true); setIsOpen(false); }} className={`${GLASS_MENU_ITEM} ${GLASS_MENU_ITEM_INACTIVE}`}>
                 <Settings size={18} /><span className="font-medium text-sm">Settings</span>

@@ -1,3 +1,5 @@
+
+
 import { Task } from '../types';
 import { audioService } from './audioService';
 import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE } from '../constants';
@@ -30,48 +32,14 @@ class NotificationService {
         return false;
     }
     
-    // If already granted, enable and return true
-    if (Notification.permission === 'granted') {
-        this.setEnabled(true);
-        localStorage.setItem('notificationsEnabled', 'true');
-        return true;
-    }
-
-    // If not denied (i.e. 'default'), request permission
+    if (Notification.permission === 'granted') return true;
+    
     if (Notification.permission !== 'denied') {
         const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
-            this.setEnabled(true);
-            localStorage.setItem('notificationsEnabled', 'true');
-            return true;
-        }
+        return permission === 'granted';
     }
     
     return false;
-  }
-
-  async testNotification() {
-      if (!this.enabled || Notification.permission !== 'granted') return;
-      const options: NotificationOptions & { renotify?: boolean } = {
-          body: "Notifications are working!",
-          icon: './favicon.svg',
-          badge: './favicon.svg',
-          silent: true, // We play custom sound
-          tag: 'test-notification',
-          renotify: true,
-      };
-      audioService.playAlert();
-      
-      if ('serviceWorker' in navigator) {
-          try {
-              const reg = await navigator.serviceWorker.ready;
-              if (reg && reg.active) {
-                   await reg.showNotification("Task Bubbles", options);
-                   return;
-              }
-          } catch(e) {}
-      }
-      new Notification("Task Bubbles", options);
   }
 
   /**
@@ -79,12 +47,6 @@ class NotificationService {
    * Also performs maintenance on the tracking set to remove stale data.
    */
   async checkAndNotify(tasks: Task[]) {
-    // If we have permission but flag is off (e.g. fresh load), sync it.
-    if (!this.enabled && 'Notification' in window && Notification.permission === 'granted') {
-        // We don't auto-enable if user explicitly turned it off in settings (handled in UI)
-        // But for this service logic, we respect the flag passed in constructor or setEnabled.
-    }
-
     if (!this.enabled) return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
@@ -192,15 +154,13 @@ class NotificationService {
 
     // "requireInteraction" keeps the notification on screen until the user dismisses it (Chrome/Edge)
     const options: NotificationOptions & { requireInteraction?: boolean; renotify?: boolean; vibrate?: number[] } = {
-        body: "Task is due! Tap to open.",
+        body: "Tap to open",
         icon: iconUrl, 
         badge: './favicon.svg',
         tag: task.id, // Replaces any existing notification for this task ID
-        silent: true, // We handle audio manually for the custom chord. 
-                      // Note: On some Android devices, silent notifications may not "pop" visually 
-                      // unless priority is high, but the Service Worker usually handles this better.
+        silent: true, // We handle audio manually for the custom chord
         requireInteraction: true, 
-        renotify: true, 
+        renotify: true, // Triggers alert again even if tag matches (important for repeat reminders or if notification is still in tray)
         vibrate: [200, 100, 200, 100, 200, 100, 400], // Strong vibration pattern
         data: { taskId: task.id }
     };
@@ -213,19 +173,14 @@ class NotificationService {
 
         // Try Service Worker first for better background handling/banner persistence on mobile
         if ('serviceWorker' in navigator) {
-            try {
-                // Wait for ready state to ensure we have the registration
-                const reg = await navigator.serviceWorker.ready;
-                if (reg && reg.active) {
-                     await reg.showNotification(title, options);
-                     notificationShown = true;
-                }
-            } catch (swError) {
-                console.warn("SW notification failed, falling back", swError);
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (reg && reg.active) {
+                 await reg.showNotification(title, options);
+                 notificationShown = true;
             }
         }
         
-        // Fallback to standard Notification API if SW not available or failed
+        // Fallback to standard Notification API if SW not available
         if (!notificationShown) {
             const n = new Notification(title, options);
             n.onclick = (event) => {
