@@ -651,30 +651,35 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     
     const centerGrad = defs.append('linearGradient').attr('id', 'center-glass-gradient').attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '100%');
     if (theme === 'dark') {
-        centerGrad.append('stop').attr('offset', '0%').attr('stop-color', 'white').attr('stop-opacity', 0.12);
-        centerGrad.append('stop').attr('offset', '100%').attr('stop-color', 'white').attr('stop-opacity', 0.06);
+        // Dark Mode -> Light Button (White/Light)
+        centerGrad.append('stop').attr('offset', '0%').attr('stop-color', '#ffffff').attr('stop-opacity', 0.95);
+        centerGrad.append('stop').attr('offset', '100%').attr('stop-color', '#e2e8f0').attr('stop-opacity', 0.85);
     } else {
-        centerGrad.append('stop').attr('offset', '0%').attr('stop-color', '#ffffff').attr('stop-opacity', 0.9);
-        centerGrad.append('stop').attr('offset', '100%').attr('stop-color', '#e2e8f0').attr('stop-opacity', 0.6);
+        // Light Mode -> Dark Button (Slate-900)
+        centerGrad.append('stop').attr('offset', '0%').attr('stop-color', '#0f172a').attr('stop-opacity', 0.95);
+        centerGrad.append('stop').attr('offset', '100%').attr('stop-color', '#1e293b').attr('stop-opacity', 0.9);
     }
 
     const hoverGrad = defs.append('linearGradient').attr('id', 'center-glass-gradient-hover').attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '100%');
     if (theme === 'dark') {
-        hoverGrad.append('stop').attr('offset', '0%').attr('stop-color', 'white').attr('stop-opacity', 0.25);
-        hoverGrad.append('stop').attr('offset', '100%').attr('stop-color', 'white').attr('stop-opacity', 0.12);
+        // Dark Mode -> Light Button Hover (Pure White)
+        hoverGrad.append('stop').attr('offset', '0%').attr('stop-color', '#ffffff').attr('stop-opacity', 1);
+        hoverGrad.append('stop').attr('offset', '100%').attr('stop-color', '#f8fafc').attr('stop-opacity', 0.95);
     } else {
-        hoverGrad.append('stop').attr('offset', '0%').attr('stop-color', 'white').attr('stop-opacity', 0.95);
-        hoverGrad.append('stop').attr('offset', '100%').attr('stop-color', '#f1f5f9').attr('stop-opacity', 0.7);
+        // Light Mode -> Dark Button Hover (Slate-800)
+        hoverGrad.append('stop').attr('offset', '0%').attr('stop-color', '#1e293b').attr('stop-opacity', 0.98);
+        hoverGrad.append('stop').attr('offset', '100%').attr('stop-color', '#334155').attr('stop-opacity', 0.95);
     }
     
     const strokeGrad = defs.append('linearGradient').attr('id', 'center-glass-stroke').attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '100%');
     if (theme === 'dark') {
-        strokeGrad.append('stop').attr('offset', '0%').attr('stop-color', 'white').attr('stop-opacity', 0.8);
-        strokeGrad.append('stop').attr('offset', '40%').attr('stop-color', 'white').attr('stop-opacity', 0.2);
-        strokeGrad.append('stop').attr('offset', '100%').attr('stop-color', 'white').attr('stop-opacity', 0.05);
+        // Dark Mode -> Light Button Stroke (White)
+        strokeGrad.append('stop').attr('offset', '0%').attr('stop-color', 'white').attr('stop-opacity', 0.9);
+        strokeGrad.append('stop').attr('offset', '100%').attr('stop-color', 'white').attr('stop-opacity', 0.5);
     } else {
-        strokeGrad.append('stop').attr('offset', '0%').attr('stop-color', '#94a3b8').attr('stop-opacity', 0.5);
-        strokeGrad.append('stop').attr('offset', '100%').attr('stop-color', '#cbd5e1').attr('stop-opacity', 0.2);
+        // Light Mode -> Dark Button Stroke (Slate)
+        strokeGrad.append('stop').attr('offset', '0%').attr('stop-color', '#334155').attr('stop-opacity', 0.8);
+        strokeGrad.append('stop').attr('offset', '100%').attr('stop-color', '#475569').attr('stop-opacity', 0.4);
     }
 
     Array.from(new Set(tasks.map(t => t.color).filter(Boolean))).forEach((color: string) => {
@@ -709,8 +714,11 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     allNodes.select('.inner-scale').interrupt().style('opacity', d => d.id === selectedTaskId ? 0 : 1).attr('transform', 'scale(1)');
     const isMobile = dimensions.width < 768;
     allNodes.filter(d => !!d.isCenter).select('.center-btn-container').attr('width', isMobile ? 80 : 48).attr('height', isMobile ? 80 : 48).attr('x', isMobile ? -40 : -24).attr('y', isMobile ? -40 : -24);
-    allNodes.filter(d => !!d.isCenter).select('.center-icon').style('color', theme === 'dark' ? 'white' : '#475569').html(`<div style="font-family: inherit; font-weight: 200; font-size: ${isMobile ? 56 : 42}px; line-height: 1; margin-top: -4px;">+</div>`);
-    allNodes.select('.main-bubble').attr('r', d => d.r).attr('fill', d => { if (d.isCenter) return 'url(#center-glass-gradient)'; if (d.originalTask.completed) return theme === 'dark' ? '#1e293b' : '#cbd5e1'; const color = d.originalTask.color; return color ? `url(#grad-${color.replace('#', '')})` : '#cccccc'; }).attr('stroke', d => d.isCenter ? 'url(#center-glass-stroke)' : 'none').attr('stroke-width', d => d.isCenter ? null : 0).style('filter', d => d.isCenter ? (theme === 'dark' ? 'drop-shadow(0px 8px 32px rgba(0,0,0,0.25))' : 'drop-shadow(0px 8px 24px rgba(0,0,0,0.15))') : (theme === 'dark' ? 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))' : 'drop-shadow(0px 4px 16px rgba(148, 163, 184, 0.4))')).attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`);
+    
+    // Update center icon color: Dark text in Dark mode (Light button), White text in Light mode (Dark button)
+    allNodes.filter(d => !!d.isCenter).select('.center-icon').style('color', theme === 'dark' ? '#0f172a' : '#ffffff').html(`<div style="font-family: inherit; font-weight: 200; font-size: ${isMobile ? 56 : 42}px; line-height: 1; margin-top: -4px;">+</div>`);
+    
+    allNodes.select('.main-bubble').attr('r', d => d.r).attr('fill', d => { if (d.isCenter) return 'url(#center-glass-gradient)'; if (d.originalTask.completed) return theme === 'dark' ? '#1e293b' : '#cbd5e1'; const color = d.originalTask.color; return color ? `url(#grad-${color.replace('#', '')})` : '#cccccc'; }).attr('stroke', d => d.isCenter ? 'url(#center-glass-stroke)' : 'none').attr('stroke-width', d => d.isCenter ? null : 0).style('filter', d => d.isCenter ? (theme === 'dark' ? 'drop-shadow(0px 8px 32px rgba(255,255,255,0.15))' : 'drop-shadow(0px 8px 24px rgba(0,0,0,0.4))') : (theme === 'dark' ? 'drop-shadow(0px 10px 20px rgba(0,0,0,0.2))' : 'drop-shadow(0px 4px 16px rgba(148, 163, 184, 0.4))')).attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`);
     allNodes.select('.pop-ring').attr('r', d => d.r + 3).attr('stroke', d => d.originalTask.completed ? '#22c55e' : '#ef4444').attr('stroke-dasharray', d => 2 * Math.PI * (d.r + 3)).attr('stroke-dashoffset', d => 2 * Math.PI * (d.r + 3));
     
     // Updated foreignObject Size to fit approx sqrt(2) * r (square in circle)
@@ -813,7 +821,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         .charging-shake { animation: shake-charge 0.08s infinite linear; }
         .harsh-shake { animation: harsh-shake 0.1s infinite linear; }
         .center-node .main-bubble { stroke-width: 1.2px; transition: all 0.3s ease; }
-        .center-node:hover .main-bubble { fill: url(#center-glass-gradient-hover) !important; stroke: ${theme === 'dark' ? 'white' : '#94a3b8'} !important; stroke-width: 1.5px !important; }
+        .center-node:hover .main-bubble { fill: url(#center-glass-gradient-hover) !important; stroke: ${theme === 'dark' ? 'white' : '#475569'} !important; stroke-width: 1.5px !important; }
         .center-node .center-icon { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
         .center-node:hover .center-icon { transform: scale(1.1); }
       `}</style>
