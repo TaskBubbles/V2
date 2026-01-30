@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { BubbleCanvas } from './components/BubbleCanvas';
@@ -49,44 +48,6 @@ const App: React.FC = () => {
       const saved = localStorage.getItem('theme');
       return (saved === 'light' || saved === 'dark') ? saved : 'light';
   });
-
-  // Notification State
-  const [notificationsEnabled, setNotificationsEnabled] = useState(() => { 
-      try { return localStorage.getItem('notificationsEnabled') === 'true'; } catch { return false; } 
-  });
-
-  useEffect(() => { 
-      localStorage.setItem('notificationsEnabled', String(notificationsEnabled)); 
-      notificationService.setEnabled(notificationsEnabled); 
-  }, [notificationsEnabled]);
-
-  const handleToggleNotifications = async () => {
-      if (!notificationsEnabled) {
-          const granted = await notificationService.requestPermission();
-          if (granted) {
-              setNotificationsEnabled(true);
-          } else {
-              if (Notification.permission === 'denied') {
-                  alert('Notifications are blocked. Please enable them in your browser settings.');
-              }
-          }
-      } else {
-          setNotificationsEnabled(false);
-      }
-  };
-
-  // Auto-ask permissions on first launch
-  useEffect(() => {
-      const hasAsked = localStorage.getItem('has_auto_asked_notifications');
-      if (!hasAsked) {
-          localStorage.setItem('has_auto_asked_notifications', 'true');
-          setTimeout(() => {
-              notificationService.requestPermission().then(granted => {
-                  if (granted) setNotificationsEnabled(true);
-              });
-          }, 1500);
-      }
-  }, []);
   
   useEffect(() => { localStorage.setItem('tasks', JSON.stringify(tasks)); }, [tasks]);
   useEffect(() => { localStorage.setItem('boards', JSON.stringify(boards)); }, [boards]);
@@ -279,8 +240,6 @@ const App: React.FC = () => {
         isHidden={!!editingTaskId}
         theme={theme}
         onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        notificationsEnabled={notificationsEnabled}
-        onToggleNotifications={handleToggleNotifications}
       />
 
       <BubbleCanvas 

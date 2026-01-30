@@ -101,14 +101,14 @@ class AudioService {
     
     const t = ctx.currentTime;
     
-    // G4 Major Chord of Pops: G4, B4, D5
+    // Major Chord of Pops: G4, B4, D5
     // Frequencies: 392.00, 493.88, 587.33
     const freqs = [392.00, 493.88, 587.33];
 
     freqs.forEach((freq, i) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        const start = t + (i * 0.08); // 80ms delay between notes
+        const start = t + (i * 0.08); // Staggered entry 80ms apart
 
         osc.type = 'sine';
         // Pop effect: pitch sweeps up quickly

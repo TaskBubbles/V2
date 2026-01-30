@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Menu, Plus, LayoutGrid, List, Trash2, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff, AlertTriangle } from 'lucide-react';
 import { Board } from '../types';
 import { audioService } from '../services/audioService';
+import { notificationService } from '../services/notificationService';
 import { FAB_BASE_CLASS, GLASS_PANEL_CLASS, GLASS_MENU_ITEM, GLASS_MENU_ITEM_ACTIVE, GLASS_MENU_ITEM_INACTIVE } from '../constants';
 
 interface SidebarProps {
@@ -16,8 +17,6 @@ interface SidebarProps {
   isHidden?: boolean;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
-  notificationsEnabled: boolean;
-  onToggleNotifications: () => void;
 }
 
 const Switch = ({ checked, iconOn, iconOff, colorClass = "from-blue-500 to-blue-600" }: { checked: boolean, iconOn?: React.ReactNode, iconOff?: React.ReactNode, colorClass?: string }) => (
@@ -32,16 +31,36 @@ const Switch = ({ checked, iconOn, iconOff, colorClass = "from-blue-500 to-blue-
     </div>
 );
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, currentBoardId, onSelectBoard, onCreateBoard, isHidden = false, theme, onToggleTheme, notificationsEnabled, onToggleNotifications }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, currentBoardId, onSelectBoard, onCreateBoard, isHidden = false, theme, onToggleTheme }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [newBoardName, setNewBoardName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => { try { return localStorage.getItem('soundEnabled') !== 'false'; } catch { return true; } });
-  
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() => { try { return localStorage.getItem('notificationsEnabled') === 'true'; } catch { return false; } });
+
   useEffect(() => { localStorage.setItem('soundEnabled', String(soundEnabled)); audioService.setMuted(!soundEnabled); }, [soundEnabled]);
+  useEffect(() => { localStorage.setItem('notificationsEnabled', String(notificationsEnabled)); notificationService.setEnabled(notificationsEnabled); }, [notificationsEnabled]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault(); if (newBoardName.trim()) { onCreateBoard(newBoardName); setNewBoardName(''); setIsCreating(false); }
+  };
+
+  const handleToggleNotifications = async () => {
+    const newState = !notificationsEnabled;
+    
+    if (newState) {
+        const granted = await notificationService.requestPermission();
+        if (!granted) {
+            // Permission was explicitly denied or dismissed
+            setNotificationsEnabled(false);
+            if (Notification.permission === 'denied') {
+                alert('Notifications are blocked. Please enable them in your browser settings to receive task alerts.');
+            }
+            return;
+        }
+    }
+    
+    setNotificationsEnabled(newState);
   };
 
   const handleDeleteData = () => {
@@ -113,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
                 <div className="p-6 space-y-4">
                     <button onClick={onToggleTheme} className="w-full flex items-center justify-between p-3 rounded-2xl border transition-all duration-200 outline-none group bg-white/40 dark:bg-white/5 border-white/40 dark:border-white/5 hover:bg-white/60 dark:hover:bg-white/10 hover:border-white/60 dark:hover:border-white/20 active:scale-[0.98]"><div className="flex items-center gap-3 text-slate-700 dark:text-white/80"><div className="p-2 rounded-xl text-slate-500 dark:text-white/70 bg-white/50 dark:bg-white/10 group-hover:scale-110 transition-transform duration-300">{theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}</div><div className="flex flex-col items-start"><span className="font-bold text-sm">Dark Mode</span><span className="text-[10px] text-slate-400 dark:text-white/40 font-medium">Adjust appearance</span></div></div><Switch checked={theme === 'dark'} iconOn={<Moon size={14} className="text-indigo-600" />} iconOff={<Sun size={14} className="text-amber-500" />} colorClass="from-indigo-500 to-violet-600" /></button>
                     <button onClick={() => setSoundEnabled(!soundEnabled)} className="w-full flex items-center justify-between p-3 rounded-2xl border transition-all duration-200 outline-none group bg-white/40 dark:bg-white/5 border-white/40 dark:border-white/5 hover:bg-white/60 dark:hover:bg-white/10 hover:border-white/60 dark:hover:border-white/20 active:scale-[0.98]"><div className="flex items-center gap-3 text-slate-700 dark:text-white/80"><div className="p-2 rounded-xl text-slate-500 dark:text-white/70 bg-white/50 dark:bg-white/10 group-hover:scale-110 transition-transform duration-300">{soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}</div><div className="flex flex-col items-start"><span className="font-bold text-sm">Sound Effects</span><span className="text-[10px] text-slate-400 dark:text-white/40 font-medium">Bubbles go pop</span></div></div><Switch checked={soundEnabled} iconOn={<Volume2 size={14} className="text-blue-600" />} iconOff={<VolumeX size={14} className="text-slate-400" />} colorClass="from-blue-400 to-blue-600" /></button>
-                    <button onClick={onToggleNotifications} className="w-full flex items-center justify-between p-3 rounded-2xl border transition-all duration-200 outline-none group bg-white/40 dark:bg-white/5 border-white/40 dark:border-white/5 hover:bg-white/60 dark:hover:bg-white/10 hover:border-white/60 dark:hover:border-white/20 active:scale-[0.98]"><div className="flex items-center gap-3 text-slate-700 dark:text-white/80"><div className="p-2 rounded-xl text-slate-500 dark:text-white/70 bg-white/50 dark:bg-white/10 group-hover:scale-110 transition-transform duration-300">{notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}</div><div className="flex flex-col items-start"><span className="font-bold text-sm">Notifications</span><span className="text-[10px] text-slate-400 dark:text-white/40 font-medium">Task reminders</span></div></div><Switch checked={notificationsEnabled} iconOn={<Bell size={14} className="text-emerald-600" />} iconOff={<BellOff size={14} className="text-slate-400" />} colorClass="from-emerald-400 to-emerald-600" /></button>
+                    <button onClick={handleToggleNotifications} className="w-full flex items-center justify-between p-3 rounded-2xl border transition-all duration-200 outline-none group bg-white/40 dark:bg-white/5 border-white/40 dark:border-white/5 hover:bg-white/60 dark:hover:bg-white/10 hover:border-white/60 dark:hover:border-white/20 active:scale-[0.98]"><div className="flex items-center gap-3 text-slate-700 dark:text-white/80"><div className="p-2 rounded-xl text-slate-500 dark:text-white/70 bg-white/50 dark:bg-white/10 group-hover:scale-110 transition-transform duration-300">{notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}</div><div className="flex flex-col items-start"><span className="font-bold text-sm">Notifications</span><span className="text-[10px] text-slate-400 dark:text-white/40 font-medium">Task reminders</span></div></div><Switch checked={notificationsEnabled} iconOn={<Bell size={14} className="text-emerald-600" />} iconOff={<BellOff size={14} className="text-slate-400" />} colorClass="from-emerald-400 to-emerald-600" /></button>
                     
                     <button onClick={handleDeleteData} className="w-full flex items-center gap-3 p-3 rounded-2xl border transition-all duration-200 outline-none bg-red-500/10 border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 active:scale-[0.98] text-red-600 dark:text-red-400">
                         <div className="p-2 rounded-xl bg-red-500/20"><AlertTriangle size={18} /></div>
