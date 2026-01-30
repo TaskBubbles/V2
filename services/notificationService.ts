@@ -167,20 +167,25 @@ class NotificationService {
 
     try {
         // Play custom 3-pop major chord
+        // Note: AudioContext needs user gesture on some browsers, but if the app is open/active, it might work.
         audioService.playAlert();
         
         let notificationShown = false;
 
         // Try Service Worker first for better background handling/banner persistence on mobile
         if ('serviceWorker' in navigator) {
-            const reg = await navigator.serviceWorker.getRegistration();
-            if (reg && reg.active) {
-                 await reg.showNotification(title, options);
-                 notificationShown = true;
+            try {
+                const reg = await navigator.serviceWorker.getRegistration();
+                if (reg && reg.active) {
+                     await reg.showNotification(title, options);
+                     notificationShown = true;
+                }
+            } catch (swError) {
+                console.warn("SW notification failed, falling back", swError);
             }
         }
         
-        // Fallback to standard Notification API if SW not available
+        // Fallback to standard Notification API if SW not available or failed
         if (!notificationShown) {
             const n = new Notification(title, options);
             n.onclick = (event) => {
