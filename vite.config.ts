@@ -10,19 +10,14 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'favicon.svg'],
       manifest: {
-        id: '/',
         name: 'Task Bubbles',
-        short_name: 'Bubbles',
+        short_name: 'Task Bubbles',
         description: 'A physics-based, interactive task management tool.',
         theme_color: '#020617',
         background_color: '#020617',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '.',
-        launch_handler: {
-          client_mode: 'focus-existing'
-        },
-        categories: ['productivity', 'utilities'],
         icons: [
           {
             src: 'pwa-192x192.png',
@@ -40,26 +35,14 @@ export default defineConfig({
             type: 'image/png',
             purpose: 'any maskable'
           }
-        ],
-        shortcuts: [
-          {
-            name: "New Task",
-            short_name: "Add",
-            description: "Create a new task bubble",
-            url: "./",
-            icons: [{ src: "pwa-192x192.png", sizes: "192x192" }]
-          }
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        skipWaiting: true
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
       }
     })
   ],
-  base: './', 
+  base: './', // Ensures assets are loaded correctly on GitHub Pages subdirectories
   build: {
     outDir: 'dist',
     assetsDir: 'assets',

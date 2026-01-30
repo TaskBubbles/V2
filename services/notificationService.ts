@@ -2,9 +2,10 @@
 
 import { Task } from '../types';
 import { audioService } from './audioService';
-import { MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE } from '../constants';
 
 class NotificationService {
+  // We store a composite key: "taskId_dueDateISO" to ensure that if a date changes, 
+  // we re-notify.
   private notifiedEvents: Set<string> = new Set();
   private enabled: boolean = false;
 
@@ -40,21 +41,36 @@ class NotificationService {
     return false;
   }
 
+  /**
+   * Checks tasks against the current time and triggers notifications.
+   * Also performs maintenance on the tracking set to remove stale data.
+   */
   async checkAndNotify(tasks: Task[]) {
     if (!this.enabled) return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
     const now = new Date();
+    // Look back window (e.g. 24 hours) to avoid notifying for ancient overdue tasks on every reload
+    // but still notify for recently overdue ones.
     const lookbackWindow = 24 * 60 * 60 * 1000; 
     
+    // Set of active keys for the current task list
+    const activeKeys = new Set<string>();
+
     for (const task of tasks) {
         if (task.completed || !task.dueDate) continue;
 
         const dueDate = new Date(task.dueDate);
         const timeDiff = now.getTime() - dueDate.getTime();
         
+        // Create a unique event key for this specific due date instance
         const eventKey = `${task.id}_${task.dueDate}`;
+        activeKeys.add(eventKey);
 
+        // Notify if:
+        // 1. It is past due (timeDiff >= 0)
+        // 2. It is within the recent window (timeDiff < lookbackWindow)
+        // 3. We haven't notified for this specific event key yet
         if (timeDiff >= 0 && timeDiff < lookbackWindow) {
             if (!this.notifiedEvents.has(eventKey)) {
                 await this.sendNotification(task);
@@ -64,12 +80,20 @@ class NotificationService {
         }
     }
 
+    // Cleanup: Remove keys from history that no longer exist in the active task list
+    // (e.g., deleted tasks, or tasks where the date was changed)
     this.cleanupStaleEvents(tasks);
   }
 
   private cleanupStaleEvents(tasks: Task[]) {
       const currentTaskIds = new Set(tasks.map(t => t.id));
       let changed = false;
+
+      // We only keep event keys if the task still exists. 
+      // Note: We don't delete based on date mismatch immediately because 
+      // we want to remember we notified for the *old* date if it just passed.
+      // But strictly speaking, if the task ID is gone, we can clear it.
+      
       this.notifiedEvents.forEach(key => {
           const [taskId] = key.split('_');
           if (!currentTaskIds.has(taskId)) {
@@ -77,70 +101,77 @@ class NotificationService {
               changed = true;
           }
       });
-      if (changed) this.saveNotifiedEvents();
+
+      if (changed) {
+          this.saveNotifiedEvents();
+      }
   }
 
   private saveNotifiedEvents() {
-      try { localStorage.setItem('notifiedEvents', JSON.stringify(Array.from(this.notifiedEvents))); } catch (e) {}
+      try {
+          localStorage.setItem('notifiedEvents', JSON.stringify(Array.from(this.notifiedEvents)));
+      } catch (e) {
+          console.error("Failed to save notified events", e);
+      }
   }
 
-  private getBubbleIcon(task: Task): string {
-    const minSize = MIN_BUBBLE_SIZE || 20;
-    const maxSize = MAX_BUBBLE_SIZE || 220;
-    const minR = 40;
-    const maxR = 84;
-    const size = Math.max(minSize, Math.min(maxSize, task.size));
-    const t = (size - minSize) / (maxSize - minSize);
-    const r = minR + t * (maxR - minR);
-
+  private getBubbleIcon(color: string): string {
+    // Generate an SVG string representing the bubble
     const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+      <circle cx="96" cy="96" r="88" fill="${color}" />
+      <circle cx="96" cy="96" r="88" fill="url(#g)" opacity="0.3" />
       <defs>
         <radialGradient id="g" cx="30%" cy="30%" r="70%">
-          <stop offset="0%" stop-color="white" stop-opacity="0.8"/>
-          <stop offset="100%" stop-color="${task.color}" stop-opacity="0.3"/>
+          <stop offset="0%" stop-color="#fff" stop-opacity="0.8"/>
+          <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
         </radialGradient>
       </defs>
-      <rect width="100%" height="100%" fill="#020617"/>
-      <circle cx="96" cy="96" r="${r}" fill="${task.color}" />
-      <circle cx="96" cy="96" r="${r}" fill="url(#g)" />
-      <circle cx="96" cy="96" r="${r}" fill="none" stroke="white" stroke-width="4" opacity="0.7" />
     </svg>`.trim();
+    // Convert to Base64 Data URI
     return `data:image/svg+xml;base64,${btoa(svg)}`;
   }
 
   private async sendNotification(task: Task) {
-    const title = task.title || "Untitled Task"; 
-    const iconUrl = this.getBubbleIcon(task);
+    const title = task.title; 
+    const iconUrl = this.getBubbleIcon(task.color);
 
+    // "requireInteraction" keeps the notification on screen until the user dismisses it (Chrome/Edge)
     const options: NotificationOptions & { requireInteraction?: boolean; renotify?: boolean; vibrate?: number[] } = {
-        body: "Time to complete this task!",
+        body: "Tap to open Task Bubbles",
         icon: iconUrl, 
         badge: './favicon.svg',
-        tag: task.id, 
-        silent: true, 
+        tag: task.id, // Replaces any existing notification for this task ID
+        silent: true, // We handle audio manually for the custom chord
         requireInteraction: true, 
-        renotify: true,
-        data: { taskId: task.id },
-        // Vibration pattern: SOS-like but faster (Short Short Long) to wake up attention
-        vibrate: [100, 50, 100, 50, 300]
+        renotify: true, // Triggers alert again even if tag matches (important for repeat reminders or if notification is still in tray)
+        vibrate: [200, 100, 200, 100, 200, 100, 400], // Strong vibration pattern
+        data: { taskId: task.id }
     };
 
     try {
+        // Play custom 3-pop major chord
         audioService.playAlert();
+        
+        let notificationShown = false;
 
-        let swReg: ServiceWorkerRegistration | undefined;
+        // Try Service Worker first for better background handling/banner persistence
         if ('serviceWorker' in navigator) {
-             try { swReg = await navigator.serviceWorker.ready; } catch(e) {}
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (reg && reg.active) {
+                 await reg.showNotification(title, options);
+                 notificationShown = true;
+            }
         }
-
-        if (swReg) {
-            // Using Service Worker is critical for Android notifications to work properly
-            await swReg.showNotification(title, options);
-        } else {
-            // Fallback
+        
+        // Fallback to standard Notification API if SW not available
+        if (!notificationShown) {
             const n = new Notification(title, options);
-            n.onclick = () => { window.focus(); n.close(); };
+            n.onclick = (event) => {
+                event.preventDefault();
+                window.focus();
+                n.close();
+            };
         }
     } catch (e) {
         console.error("Failed to send notification", e);
