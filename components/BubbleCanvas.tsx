@@ -1,5 +1,3 @@
-
-
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Task, Board } from '../types';
@@ -705,7 +703,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
     shaker.append('circle').attr('class', d => `main-bubble transition-colors duration-300 ${d.isCenter ? 'backdrop-blur-xl' : 'backdrop-blur-sm'}`).attr('stroke-width', 0);
     
     // Text container using foreignObject
-    shaker.append('g').attr('class', 'text-content pointer-events-none').append('foreignObject').append('xhtml:div').attr('class', 'w-full h-full flex flex-col items-center justify-center text-center overflow-visible bubble-text-container').html(d => `<div class="bubble-text font-bold leading-tight select-none px-0.5" style="overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap; line-height: 1.1; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"></div>`);
+    shaker.append('g').attr('class', 'text-content pointer-events-none').append('foreignObject').append('xhtml:div').attr('class', 'w-full h-full flex flex-col items-center justify-center text-center overflow-visible bubble-text-container').html(d => `<div class="bubble-text font-bold leading-tight select-none px-0.5" style="overflow-wrap: break-word; word-wrap: break-word; hyphens: manual; word-break: normal; white-space: pre-wrap; line-height: 1.1; text-shadow: 0 1px 2px rgba(0,0,0,0.3);"></div>`);
     
     inner.filter(d => !!d.isCenter).append('foreignObject').attr('class', 'center-btn-container pointer-events-none').append('xhtml:div').attr('class', 'w-full h-full flex items-center justify-center text-white center-icon').html('');
     const allNodes = enterGroup.merge(nodeSelection);
@@ -736,7 +734,7 @@ export const BubbleCanvas: React.FC<BubbleCanvasProps> = ({
         const hasMetadata = d.originalTask.dueDate || d.originalTask.description || (d.originalTask.subtasks && d.originalTask.subtasks.length > 0);
         const titleStyle = hasMetadata ? 'margin-bottom: 20px;' : ''; 
         
-        html += `<div class="bubble-text font-bold leading-tight select-none px-0.5" style="overflow-wrap: break-word; word-wrap: break-word; hyphens: auto; word-break: normal; white-space: normal; line-height: 1.05; text-shadow: 0 1px 3px rgba(0,0,0,0.3); ${titleStyle}">${d.originalTask.title}</div>`; 
+        html += `<div class="bubble-text font-bold leading-tight select-none px-0.5" style="overflow-wrap: break-word; word-wrap: break-word; hyphens: manual; word-break: normal; white-space: normal; line-height: 1.05; text-shadow: 0 1px 3px rgba(0,0,0,0.3); ${titleStyle}">${d.originalTask.title}</div>`; 
         
         // Unified Metadata Pill (Bottom)
         if (hasMetadata && d.r > 40) { // Only show on bubbles large enough

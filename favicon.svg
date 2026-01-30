@@ -27,9 +27,11 @@
       }
     </style>
   </defs>
-  <circle id="BG_Color" data-name="BG Color" class="cls-4" cx="358.9" cy="149" r="140"/>
-  <circle id="BG_Color-2" data-name="BG Color" class="cls-2" cx="121.2" cy="219.1" r="107.6"/>
-  <circle id="BG_Color-3" data-name="BG Color" class="cls-3" cx="112.2" cy="386.9" r="60.2"/>
-  <circle id="BG_Color-4" data-name="BG Color" class="cls-5" cx="285.2" cy="390.6" r="112.5"/>
-  <circle id="BG_Color-5" data-name="BG Color" class="cls-1" cx="186.4" cy="80.6" r="45.4"/>
+  <g transform="translate(25.6, 25.6) scale(0.9)">
+    <circle id="BG_Color" data-name="BG Color" class="cls-4" cx="358.9" cy="149" r="112"/>
+    <circle id="BG_Color-2" data-name="BG Color" class="cls-2" cx="121.2" cy="219.1" r="86"/>
+    <circle id="BG_Color-3" data-name="BG Color" class="cls-3" cx="112.2" cy="386.9" r="48"/>
+    <circle id="BG_Color-4" data-name="BG Color" class="cls-5" cx="285.2" cy="390.6" r="90"/>
+    <circle id="BG_Color-5" data-name="BG Color" class="cls-1" cx="186.4" cy="80.6" r="36"/>
+  </g>
 </svg>

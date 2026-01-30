@@ -1,7 +1,6 @@
 /// <reference lib="webworker" />
-import { cleanupOutdatedCaches, precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching';
+import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
-import { registerRoute, NavigationRoute } from 'workbox-routing';
 
 declare let self: ServiceWorkerGlobalScope & { __WB_MANIFEST: any };
 
@@ -10,23 +9,6 @@ precacheAndRoute(self.__WB_MANIFEST);
 
 self.skipWaiting();
 clientsClaim();
-
-// Navigation Fallback: Critical for PWA Offline Capability check
-// This ensures that when navigating to the root '/' or any sub-path while offline,
-// the Service Worker serves the cached index.html.
-try {
-    const handler = createHandlerBoundToURL('index.html');
-    const navigationRoute = new NavigationRoute(handler, {
-        denylist: [
-            new RegExp('^/assets/'),
-            new RegExp('^/favicon'),
-            new RegExp('\\.[a-z]+$')
-        ]
-    });
-    registerRoute(navigationRoute);
-} catch (error) {
-    console.warn('Navigation fallback setup failed (index.html might not be in precache):', error);
-}
 
 const DB_NAME = 'task-bubbles-db';
 const STORE_NAME = 'pending-notifications';

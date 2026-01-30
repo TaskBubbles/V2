@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { v4 as uuidv4 } from 'uuid';
@@ -441,7 +439,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                         onInput={(e) => { setHasText(!!e.currentTarget.innerText); const newSize = calculateFontSize(currentSizeRef.current, e.currentTarget.innerText || 'Task Name'); e.currentTarget.style.fontSize = `${newSize}px`; const placeholderEl = viewportRef.current?.querySelector('.placeholder-text') as HTMLElement; if (placeholderEl) placeholderEl.style.fontSize = `${newSize}px`; }} 
                         onKeyDown={handleKeyDown} 
                         className={`bubble-text-inner w-full text-center text-white font-bold outline-none pointer-events-auto drop-shadow-lg transition-opacity duration-200 z-20`} 
-                        style={{ fontSize: currentFontSize, overflowWrap: 'break-word', wordWrap: 'break-word', hyphens: 'auto', wordBreak: 'normal', whiteSpace: 'normal', lineHeight: 1.05, textShadow: '0 1px 3px rgba(0,0,0,0.3)', minWidth: '20px', minHeight: '1.2em' }}
+                        style={{ fontSize: currentFontSize, overflowWrap: 'break-word', wordWrap: 'break-word', hyphens: 'manual', wordBreak: 'normal', whiteSpace: 'normal', lineHeight: 1.05, textShadow: '0 1px 3px rgba(0,0,0,0.3)', minWidth: '20px', minHeight: '1.2em' }}
                       >
                         {task.title}
                       </div>

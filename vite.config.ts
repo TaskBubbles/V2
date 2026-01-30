@@ -1,5 +1,3 @@
-
-
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -19,7 +17,6 @@ export default defineConfig({
         type: 'module'
       },
       manifest: {
-        id: 'task-bubbles-app',
         name: 'Task Bubbles',
         short_name: 'Task Bubbles',
         description: 'A physics-based, interactive task management tool.',
@@ -27,7 +24,7 @@ export default defineConfig({
         background_color: '#020617',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: './',
+        start_url: '.',
         launch_handler: {
           client_mode: 'focus-existing'
         },
@@ -35,43 +32,16 @@ export default defineConfig({
         icons: [
           {
             src: 'favicon.svg',
-            sizes: '192x192',
+            sizes: '192x192 512x512',
             type: 'image/svg+xml',
             purpose: 'any'
           },
           {
             src: 'favicon.svg',
-            sizes: '512x512',
-            type: 'image/svg+xml',
-            purpose: 'any'
-          },
-          {
-            src: 'favicon.svg',
-            sizes: '192x192',
-            type: 'image/svg+xml',
-            purpose: 'maskable'
-          },
-          {
-            src: 'favicon.svg',
-            sizes: '512x512',
+            sizes: '192x192 512x512',
             type: 'image/svg+xml',
             purpose: 'maskable'
           }
-        ],
-        screenshots: [
-           {
-             src: 'favicon.svg', 
-             sizes: '512x512',
-             type: 'image/svg+xml',
-             form_factor: 'wide',
-             label: 'Task Bubbles Home'
-           },
-           {
-             src: 'favicon.svg',
-             sizes: '512x512',
-             type: 'image/svg+xml',
-             label: 'Task Bubbles Mobile'
-           }
         ],
         shortcuts: [
           {
