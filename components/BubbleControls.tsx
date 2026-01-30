@@ -7,6 +7,7 @@ import { Task, Board, Subtask } from '../types';
 import { COLORS, MIN_BUBBLE_SIZE, MAX_BUBBLE_SIZE, calculateFontSize, GLASS_PANEL_CLASS, TOOLTIP_BASE_CLASS, GLASS_BTN_INACTIVE, GLASS_BTN_ACTIVE, GLASS_BTN_DANGER, GLASS_MENU_ITEM, GLASS_MENU_ITEM_ACTIVE, GLASS_MENU_ITEM_INACTIVE } from '../constants';
 import { Trash2, Calendar, AlertTriangle, X, ChevronDown, Check, AlignLeft, Plus, Square, CheckSquare, ListChecks, Palette } from 'lucide-react';
 import { audioService } from '../services/audioService';
+import { notificationService } from '../services/notificationService';
 
 interface BubbleControlsProps {
   task: Task;
@@ -266,6 +267,21 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     }
   };
 
+  const handleDateChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      const isoDate = val ? new Date(val).toISOString() : undefined;
+      
+      if (isoDate && 'Notification' in window && Notification.permission === 'default') {
+          const granted = await notificationService.requestPermission();
+          if (granted) {
+              notificationService.setEnabled(true);
+              localStorage.setItem('notificationsEnabled', 'true');
+          }
+      }
+      
+      onUpdate({ ...task, dueDate: isoDate });
+  };
+
   const ringDiameter = task.size * 2 + 60;
   const bubbleDiameter = task.size * 2;
   const safeZone = Math.min(winDim.w, winDim.h) * 0.85; 
@@ -362,7 +378,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
     <div className="flex items-center gap-2 shrink-0">
         <button type="button" className={`px-3 py-2.5 ${task.dueDate ? GLASS_BTN_ACTIVE : GLASS_BTN_INACTIVE}`}>
             <div className="flex items-center gap-1.5 pointer-events-none relative z-0"><Calendar size={18} />{task.dueDate && !isMobile && (<span className="ml-0.5 text-[10px] font-bold whitespace-nowrap">{new Date(task.dueDate).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })} {new Date(task.dueDate).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>)}</div>
-            <input ref={dateInputRef} type="datetime-local" className="absolute inset-0 opacity-0 w-full h-full z-10 cursor-pointer date-trigger" value={toDateTimeLocal(task.dueDate)} onChange={(e) => onUpdate({ ...task, dueDate: e.target.value ? new Date(e.target.value).toISOString() : undefined })} onClick={(e) => { e.stopPropagation(); try { if (e.currentTarget && 'showPicker' in e.currentTarget) e.currentTarget.showPicker(); } catch (err) {} }} />
+            <input ref={dateInputRef} type="datetime-local" className="absolute inset-0 opacity-0 w-full h-full z-10 cursor-pointer date-trigger" value={toDateTimeLocal(task.dueDate)} onChange={handleDateChange} onClick={(e) => { e.stopPropagation(); try { if (e.currentTarget && 'showPicker' in e.currentTarget) e.currentTarget.showPicker(); } catch (err) {} }} />
             <style>{`.date-trigger::-webkit-calendar-picker-indicator { position: absolute; top: 0; left: 0; width: 100%; height: 100%; padding: 0; margin: 0; opacity: 0; cursor: pointer; }`}</style>
         </button>
         <button onClick={() => { setShowDescription(!showDescription); if (!showDescription) setTimeout(() => textareaRef.current?.focus(), 50); }} className={`px-3 py-2.5 ${(showDescription || task.description) ? GLASS_BTN_ACTIVE : GLASS_BTN_INACTIVE}`}><AlignLeft size={18} /></button>

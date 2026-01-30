@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { BubbleCanvas } from './components/BubbleCanvas';
@@ -62,6 +63,60 @@ const App: React.FC = () => {
         root.classList.remove('dark');
     }
   }, [theme]);
+
+  // Handle Notifications (Background/Foreground Bubble Opening)
+  useEffect(() => {
+    const handleHighlightTask = (taskId: string) => {
+      const task = tasks.find(t => t.id === taskId);
+      if (task) {
+        // 1. Switch Board if needed
+        if (task.boardId !== currentBoardId && currentBoardId !== 'ALL' && currentBoardId !== 'COMPLETED') {
+             const boardExists = boards.some(b => b.id === task.boardId);
+             if (boardExists) setCurrentBoardId(task.boardId);
+             else setCurrentBoardId('ALL');
+        }
+        
+        // 2. Ensure task is visible if completed
+        if (task.completed) {
+             if (currentBoardId !== 'COMPLETED') {
+                 setShowCompleted(true);
+             }
+        }
+
+        // 3. Close overlays
+        setIsSidebarOpen(false);
+        setIsListViewOpen(false);
+
+        // 4. Open Bubble
+        setEditingTaskId(taskId);
+      }
+    };
+
+    // A. Check URL Params (New Window / Page Load)
+    const params = new URLSearchParams(window.location.search);
+    const highlightId = params.get('highlight');
+    if (highlightId) {
+        handleHighlightTask(highlightId);
+        window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    // B. Check SW Messages (Focus Existing Window)
+    const handleMessage = (event: MessageEvent) => {
+        if (event.data && event.data.type === 'HIGHLIGHT_TASK' && event.data.taskId) {
+            handleHighlightTask(event.data.taskId);
+        }
+    };
+
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', handleMessage);
+    }
+
+    return () => {
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.removeEventListener('message', handleMessage);
+        }
+    };
+  }, [tasks, boards, currentBoardId]);
 
   useEffect(() => {
     const interval = setInterval(() => {

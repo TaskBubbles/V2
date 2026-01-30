@@ -146,12 +146,32 @@ async function scheduleNotifications(payloads: any[]) {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const taskId = event.notification.data?.taskId;
+  const baseUrl = event.notification.data?.url || './';
+
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        // 1. Try to find an existing window to focus
         for (const client of clientList) {
-            if ('focus' in client) return client.focus();
+            if ('focus' in client) {
+                return (client as WindowClient).focus().then((c) => {
+                    // Once focused, tell the app to highlight the task
+                    if (taskId) {
+                        c.postMessage({ type: 'HIGHLIGHT_TASK', taskId });
+                    }
+                });
+            }
         }
-        if (self.clients.openWindow) return self.clients.openWindow(event.notification.data?.url || './');
+        
+        // 2. If no window open, open a new one
+        if (self.clients.openWindow) {
+            // Append query param so the app knows what to highlight on load
+            const url = new URL(baseUrl, self.location.href);
+            if (taskId) {
+                url.searchParams.set('highlight', taskId);
+            }
+            return self.clients.openWindow(url.href).then(() => {});
+        }
     })
   );
 });
