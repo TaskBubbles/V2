@@ -55,7 +55,7 @@ class NotificationService {
     const now = new Date();
     const lookbackWindow = 24 * 60 * 60 * 1000; 
     
-    // 1. In-App / Foreground polling (Existing Logic)
+    // 1. In-App / Foreground polling
     for (const task of tasks) {
         if (task.completed || !task.dueDate) continue;
 
@@ -76,29 +76,56 @@ class NotificationService {
 
     this.cleanupStaleEvents(tasks);
     
-    // 2. Schedule Future Notifications with Service Worker (For closed app support)
+    // 2. Schedule Future Notifications with Service Worker
     this.syncWithServiceWorker(tasks);
   }
 
   private async syncWithServiceWorker(tasks: Task[]) {
       if (!('serviceWorker' in navigator)) return;
-      const reg = await navigator.serviceWorker.ready;
-      if (!reg || !reg.active) return;
-
-      const futureTasks = tasks.filter(t => !t.completed && t.dueDate && new Date(t.dueDate).getTime() > Date.now());
       
-      const payload: NotificationPayload[] = futureTasks.map(task => ({
-          title: task.title || "Untitled Task",
-          body: "It's time to complete this task!",
-          icon: this.getBubbleIcon(task),
-          timestamp: new Date(task.dueDate!).getTime(),
-          tag: task.id
-      }));
+      try {
+          const reg = await navigator.serviceWorker.ready;
+          if (!reg || !reg.active) return;
 
-      reg.active.postMessage({
-          type: 'SCHEDULE_NOTIFICATIONS',
-          payload: payload
-      });
+          const futureTasks = tasks.filter(t => !t.completed && t.dueDate);
+          
+          const payload: NotificationPayload[] = futureTasks.map(task => ({
+              title: task.title || "Untitled Task",
+              body: "It's time to complete this task!",
+              icon: this.getBubbleIcon(task),
+              timestamp: new Date(task.dueDate!).getTime(),
+              tag: task.id
+          }));
+
+          // Send to SW for scheduling/storage
+          reg.active.postMessage({
+              type: 'SCHEDULE_NOTIFICATIONS',
+              payload: payload
+          });
+
+          // Register Periodic Sync if supported (Fallback for closed app)
+          // @ts-ignore
+          if ('periodicSync' in reg) {
+              try {
+                  const status = await navigator.permissions.query({
+                    // @ts-ignore
+                    name: 'periodic-background-sync',
+                  });
+                  
+                  if (status.state === 'granted') {
+                      // @ts-ignore
+                      await reg.periodicSync.register('check-tasks', {
+                          minInterval: 60 * 60 * 1000 // 1 Hour
+                      });
+                  }
+              } catch (e) {
+                  // Periodic sync permission might fail or not be implemented
+                  console.debug("Periodic sync registration failed", e);
+              }
+          }
+      } catch (e) {
+          console.error("Error syncing with service worker", e);
+      }
   }
 
   private cleanupStaleEvents(tasks: Task[]) {
