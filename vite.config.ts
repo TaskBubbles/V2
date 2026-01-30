@@ -9,10 +9,13 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'favicon.svg'],
+      devOptions: {
+        enabled: true
+      },
       manifest: {
         id: '/',
         name: 'Task Bubbles',
-        short_name: 'Bubbles',
+        short_name: 'Task Bubbles',
         description: 'A physics-based, interactive task management tool.',
         theme_color: '#020617',
         background_color: '#020617',
@@ -25,20 +28,16 @@ export default defineConfig({
         categories: ['productivity', 'utilities'],
         icons: [
           {
-            src: 'pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png'
+            src: 'favicon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any'
           },
           {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable'
+            src: 'favicon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'maskable'
           }
         ],
         shortcuts: [
@@ -47,7 +46,7 @@ export default defineConfig({
             short_name: "Add",
             description: "Create a new task bubble",
             url: "./",
-            icons: [{ src: "pwa-192x192.png", sizes: "192x192" }]
+            icons: [{ src: "favicon.svg", sizes: "192x192", type: "image/svg+xml" }]
           }
         ]
       },

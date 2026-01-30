@@ -113,12 +113,13 @@ class NotificationService {
     const title = task.title || "Untitled Task"; 
     const iconUrl = this.getBubbleIcon(task);
 
+    // Removed silent: true to allow visual banners to appear.
+    // Some OS/Browsers hide banners if silent is true.
     const options: NotificationOptions & { requireInteraction?: boolean; renotify?: boolean; vibrate?: number[] } = {
         body: "Time to complete this task!",
         icon: iconUrl, 
         badge: './favicon.svg',
         tag: task.id, 
-        silent: true, 
         requireInteraction: true, 
         renotify: true,
         data: { taskId: task.id },
@@ -127,6 +128,8 @@ class NotificationService {
     };
 
     try {
+        // We play our own sound, but removing 'silent: true' might play default system sound too.
+        // This is a trade-off to ensure the banner shows up.
         audioService.playAlert();
 
         let swReg: ServiceWorkerRegistration | undefined;
