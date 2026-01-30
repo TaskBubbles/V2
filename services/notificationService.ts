@@ -138,7 +138,7 @@ class NotificationService {
 
     // "requireInteraction" keeps the notification on screen until the user dismisses it (Chrome/Edge)
     const options: NotificationOptions & { requireInteraction?: boolean; renotify?: boolean; vibrate?: number[] } = {
-        body: "Tap to open Task Bubbles",
+        body: "Tap to open",
         icon: iconUrl, 
         badge: './favicon.svg',
         tag: task.id, // Replaces any existing notification for this task ID
