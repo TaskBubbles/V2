@@ -119,15 +119,13 @@ class NotificationService {
     const title = `Time's up! ⏰`;
     
     // "requireInteraction" keeps the notification on screen until the user dismisses it (Chrome/Edge)
-    const options: NotificationOptions & { requireInteraction?: boolean; renotify?: boolean } = {
+    const options: NotificationOptions & { requireInteraction?: boolean } = {
         body: `${task.title}\nis now due.`,
-        icon: './favicon.svg', 
-        badge: './favicon.svg',
+        icon: './favicon.ico', 
+        badge: './favicon.ico',
         tag: task.id, // Replaces any existing notification for this task ID
         silent: false, // We handle audio manually for better control
         requireInteraction: true, 
-        renotify: true, // Triggers alert again even if tag matches (important for repeat reminders or if notification is still in tray)
-        vibrate: [200, 100, 200, 100, 200, 100, 400], // Strong vibration pattern
         data: { taskId: task.id }
     };
 
@@ -136,26 +134,18 @@ class NotificationService {
         // We attempt to play audio even if the notification fails or is silent
         audioService.playAlert();
         
-        let notificationShown = false;
-
-        // Try Service Worker first for better background handling/banner persistence
-        if ('serviceWorker' in navigator) {
-            const reg = await navigator.serviceWorker.getRegistration();
-            if (reg && reg.active) {
-                 await reg.showNotification(title, options);
-                 notificationShown = true;
-            }
-        }
+        // Trigger browser notification
+        // Note: Service Worker registration is usually required for mobile "background" notifications,
+        // but this works for desktop/active tabs.
+        const n = new Notification(title, options);
         
-        // Fallback to standard Notification API if SW not available
-        if (!notificationShown) {
-            const n = new Notification(title, options);
-            n.onclick = (event) => {
-                event.preventDefault();
-                window.focus();
-                n.close();
-            };
-        }
+        n.onclick = (event) => {
+            event.preventDefault();
+            window.focus();
+            n.close();
+            // dispatch an event or logic to open the specific task could go here
+            // e.g. window.dispatchEvent(new CustomEvent('open-task', { detail: task.id }));
+        };
     } catch (e) {
         console.error("Failed to send notification", e);
     }
