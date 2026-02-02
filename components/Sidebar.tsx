@@ -258,10 +258,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
                     />
                     <button 
                         type="submit" 
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-green-500 hover:text-green-600 hover:bg-green-500/10 dark:hover:bg-green-500/20 rounded-md transition-colors"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-white/20 dark:bg-white/5 border border-white/30 dark:border-white/10 text-slate-700 dark:text-white hover:bg-white/40 dark:hover:bg-white/20 transition-all"
                         title="Create Board"
                     >
-                        <Check size={16} strokeWidth={3} />
+                        <Check size={16} strokeWidth={2.5} />
                     </button>
                 </form>
             ) : (
