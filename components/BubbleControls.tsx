@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { v4 as uuidv4 } from 'uuid';
@@ -315,7 +316,14 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
         {showDescription && (
             <div className="w-full relative group">
                 <div className="absolute top-3 left-3 text-slate-500 dark:text-white/40 pointer-events-none"><AlignLeft size={16} /></div>
-                <textarea ref={textareaRef} rows={task.description ? 3 : 1} placeholder="Add a description..." value={task.description || ''} onChange={(e) => onUpdate({ ...task, description: e.target.value })} className="w-full transition-colors rounded-xl py-3 pl-10 pr-4 text-sm resize-none outline-none leading-relaxed custom-scrollbar bg-white/20 dark:bg-white/5 hover:bg-white/30 dark:hover:bg-white/10 focus:bg-white/40 dark:focus:bg-white/10 border border-white/30 dark:border-white/5 focus:border-slate-300 dark:focus:border-white/20 text-slate-900 dark:text-white placeholder:text-slate-500 dark:placeholder:text-white/30" style={{ minHeight: '46px', maxHeight: '120px' }} />
+                <textarea ref={textareaRef} rows={task.description ? 3 : 1} placeholder="Add a description..." value={task.description || ''} onChange={(e) => onUpdate({ ...task, description: e.target.value })} className="w-full transition-colors rounded-xl py-3 pl-10 pr-10 text-sm resize-none outline-none leading-relaxed custom-scrollbar bg-white/20 dark:bg-white/5 hover:bg-white/30 dark:hover:bg-white/10 focus:bg-white/40 dark:focus:bg-white/10 border border-white/30 dark:border-white/5 focus:border-slate-300 dark:focus:border-white/20 text-slate-900 dark:text-white placeholder:text-slate-500 dark:placeholder:text-white/30" style={{ minHeight: '46px', maxHeight: '120px' }} />
+                <button 
+                    onMouseDown={(e) => { e.preventDefault(); textareaRef.current?.blur(); }}
+                    className="absolute top-2.5 right-2.5 p-1.5 text-slate-400 hover:text-green-500 hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 active:opacity-100"
+                    title="Save Description"
+                >
+                    <Check size={16} />
+                </button>
             </div>
         )}
         {showSubtasks && (
@@ -329,8 +337,12 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                             <button onClick={() => deleteSubtask(sub.id)} className="opacity-0 group-hover:opacity-100 text-slate-400 dark:text-white/20 hover:text-red-500 dark:hover:text-red-400 transition-all px-1"><X size={14} /></button>
                         </div>
                     ))}
-                    <form onSubmit={handleAddSubtask} className="flex items-center gap-2 p-2">
-                        <Plus size={16} className="text-slate-400 dark:text-white/30 shrink-0" /><input ref={subtaskInputRef} type="text" value={newSubtaskTitle} onChange={(e) => setNewSubtaskTitle(e.target.value)} placeholder="Add subtask..." className="flex-1 bg-transparent outline-none text-sm text-slate-900 dark:text-white placeholder:text-slate-500 dark:placeholder:text-white/30" />
+                    <form onSubmit={handleAddSubtask} className="flex items-center gap-2 p-2 relative">
+                        <Plus size={16} className="text-slate-400 dark:text-white/30 shrink-0" />
+                        <input ref={subtaskInputRef} type="text" value={newSubtaskTitle} onChange={(e) => setNewSubtaskTitle(e.target.value)} placeholder="Add subtask..." className="flex-1 bg-transparent outline-none text-sm text-slate-900 dark:text-white placeholder:text-slate-500 dark:placeholder:text-white/30" />
+                        <button type="submit" className="p-1 text-slate-400 hover:text-green-500 hover:bg-slate-100 dark:hover:bg-white/10 rounded-md transition-colors" title="Add Subtask">
+                            <Check size={16} />
+                        </button>
                     </form>
                  </div>
             </div>

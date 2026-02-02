@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Menu, Plus, LayoutGrid, List, Trash2, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff, AlertTriangle, Download, LogOut, Cloud, Upload } from 'lucide-react';
+import { Menu, Plus, LayoutGrid, List, Trash2, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff, AlertTriangle, Download, LogOut, Cloud, Upload, Check } from 'lucide-react';
 import { Board, User } from '../types';
 import { audioService } from '../services/audioService';
 import { notificationService } from '../services/notificationService';
@@ -242,8 +242,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
                 </div>
             ))}
             {isCreating ? (
-                <form onSubmit={handleSubmit} className="px-1 py-2">
-                    <input autoFocus type="text" placeholder="Board Name" value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} onBlur={() => !newBoardName && setIsCreating(false)} className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none transition-all bg-white/30 dark:bg-white/5 border border-white/40 dark:border-white/10 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/20 focus:border-slate-400 dark:focus:border-white/30" />
+                <form onSubmit={handleSubmit} className="px-1 py-2 relative">
+                    <input 
+                        autoFocus 
+                        type="text" 
+                        placeholder="Board Name" 
+                        value={newBoardName} 
+                        onChange={(e) => setNewBoardName(e.target.value)} 
+                        onBlur={(e) => {
+                            // Only close if empty and not focusing the submit button
+                            if (e.relatedTarget && (e.relatedTarget as HTMLElement).getAttribute('type') === 'submit') return;
+                            !newBoardName && setIsCreating(false);
+                        }} 
+                        className="w-full rounded-lg pl-4 pr-10 py-2.5 text-sm focus:outline-none transition-all bg-white/30 dark:bg-white/5 border border-white/40 dark:border-white/10 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/20 focus:border-slate-400 dark:focus:border-white/30" 
+                    />
+                    <button 
+                        type="submit" 
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-green-500 hover:text-green-600 hover:bg-green-500/10 dark:hover:bg-green-500/20 rounded-md transition-colors"
+                        title="Create Board"
+                    >
+                        <Check size={16} strokeWidth={3} />
+                    </button>
                 </form>
             ) : (
                 <button onClick={() => setIsCreating(true)} className={`${GLASS_MENU_ITEM} ${GLASS_MENU_ITEM_INACTIVE} mt-2 group`}>
