@@ -1,8 +1,7 @@
-
 {
   "name": "task-bubbles",
   "private": true,
-  "version": "1.6.1",
+  "version": "1.6.0",
   "type": "module",
   "homepage": "https://taskbubbles.github.io/V2/",
   "scripts": {
@@ -15,8 +14,7 @@
     "react-dom": "^18.3.1",
     "d3": "^7.9.0",
     "lucide-react": "^0.344.0",
-    "uuid": "^9.0.1",
-    "firebase": "^10.8.0"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",

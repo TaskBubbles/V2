@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { BubbleCanvas } from './components/BubbleCanvas';
@@ -9,7 +10,6 @@ import { COLORS, FAB_BASE_CLASS, GLASS_PANEL_CLASS, GLASS_MENU_ITEM, GLASS_MENU_
 import { LayoutList } from 'lucide-react';
 import { notificationService } from './services/notificationService';
 import { audioService } from './services/audioService';
-import { auth, db } from './services/firebaseService';
 
 const App: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>(() => {
@@ -42,12 +42,6 @@ const App: React.FC = () => {
   const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
   const [dragHoveredBoardId, setDragHoveredBoardId] = useState<string | null>(null);
   
-  const [user, setUser] = useState<User | null>(null);
-  
-  // Refs for migration snapshot
-  const tasksRef = useRef<Task[]>(tasks);
-  const boardsRef = useRef<Board[]>(boards);
-
   const boardMenuRef = useRef<HTMLDivElement>(null);
   const boardButtonRef = useRef<HTMLButtonElement>(null);
   const menuWasOpenOnDown = useRef(false);
@@ -57,17 +51,8 @@ const App: React.FC = () => {
       return (saved === 'light' || saved === 'dark') ? saved : 'light';
   });
   
-  // --- Local Storage Sync (Backup) ---
-  useEffect(() => { 
-      localStorage.setItem('tasks', JSON.stringify(tasks)); 
-      tasksRef.current = tasks;
-  }, [tasks]);
-  
-  useEffect(() => { 
-      localStorage.setItem('boards', JSON.stringify(boards)); 
-      boardsRef.current = boards;
-  }, [boards]);
-  
+  useEffect(() => { localStorage.setItem('tasks', JSON.stringify(tasks)); }, [tasks]);
+  useEffect(() => { localStorage.setItem('boards', JSON.stringify(boards)); }, [boards]);
   useEffect(() => { localStorage.setItem('currentBoardId', currentBoardId); }, [currentBoardId]);
   useEffect(() => { localStorage.setItem('theme', theme); }, [theme]);
   
@@ -80,125 +65,60 @@ const App: React.FC = () => {
     }
   }, [theme]);
 
-  // --- Firebase Sync ---
-  useEffect(() => {
-    let unsubscribeTasks: (() => void) | undefined;
-    let unsubscribeBoards: (() => void) | undefined;
-    let unsubscribePrefs: (() => void) | undefined;
-
-    const unsubscribeAuth = auth.onAuthStateChanged(async (u) => {
-        if (u) {
-            const newUser = { id: u.uid, name: u.displayName || 'User', email: u.email || '', avatarUrl: u.photoURL || undefined };
-            setUser(newUser);
-
-            // 1. Migrate Local Data if needed
-            // This uploads current local state to cloud if it's the user's first time syncing
-            const localTasks = tasksRef.current;
-            const localBoards = boardsRef.current;
-            
-            // Check if default task exists to avoid migrating just the tutorial
-            const isTutorial = localTasks.length === 5 && localTasks.some(t => t.title === 'Hold to Pop');
-            
-            // Perform migration
-            await db.migrateAllLocalData(u.uid, isTutorial ? [] : localTasks, localBoards, theme);
-
-            // 2. Setup Listeners
-            unsubscribeTasks = db.syncTasks(u.uid, (syncedTasks) => {
-                setTasks(syncedTasks);
-            });
-            
-            unsubscribeBoards = db.syncBoards(u.uid, (syncedBoards) => {
-                if (syncedBoards.length > 0) {
-                    setBoards(syncedBoards);
-                }
-            });
-
-            unsubscribePrefs = db.syncPreferences(u.uid, (prefs) => {
-                if (prefs && prefs.theme) {
-                    setTheme(prefs.theme);
-                }
-            });
-
-        } else {
-            setUser(null);
-            if (unsubscribeTasks) unsubscribeTasks();
-            if (unsubscribeBoards) unsubscribeBoards();
-            if (unsubscribePrefs) unsubscribePrefs();
-        }
-    });
-
-    return () => {
-        unsubscribeAuth();
-        if (unsubscribeTasks) unsubscribeTasks();
-        if (unsubscribeBoards) unsubscribeBoards();
-        if (unsubscribePrefs) unsubscribePrefs();
-    };
-  }, []);
-
-  // Board Safety Check: If current board is deleted remotely, switch to first available
-  useEffect(() => {
-      if (currentBoardId === 'ALL' || currentBoardId === 'COMPLETED') return;
-      if (boards.length > 0 && !boards.find(b => b.id === currentBoardId)) {
-          setCurrentBoardId(boards[0].id);
-      }
-  }, [boards, currentBoardId]);
-
-  const handleSignIn = async () => {
-    try {
-        await auth.signInWithGoogle();
-    } catch (e) {
-        console.error("Sign in failed", e);
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-        await auth.signOut();
-        window.location.reload();
-    } catch (e) {
-        console.error("Sign out failed", e);
-    }
-  };
-
-  const handleToggleTheme = () => {
-      const newTheme = theme === 'dark' ? 'light' : 'dark';
-      setTheme(newTheme);
-      if (user) {
-          db.savePreference(user.id, 'theme', newTheme);
-      }
-  };
-
   // Handle Notifications (Background/Foreground Bubble Opening & Actions)
   useEffect(() => {
     const handleHighlightTask = (taskId: string) => {
       const task = tasks.find(t => t.id === taskId);
       if (task) {
+        // 1. Switch Board if needed
         if (task.boardId !== currentBoardId && currentBoardId !== 'ALL' && currentBoardId !== 'COMPLETED') {
              const boardExists = boards.some(b => b.id === task.boardId);
              if (boardExists) setCurrentBoardId(task.boardId);
              else setCurrentBoardId('ALL');
         }
-        if (task.completed && currentBoardId !== 'COMPLETED') {
-             setShowCompleted(true);
+        
+        // 2. Ensure task is visible if completed
+        if (task.completed) {
+             if (currentBoardId !== 'COMPLETED') {
+                 setShowCompleted(true);
+             }
         }
+
+        // 3. Close overlays
         setIsSidebarOpen(false);
         setIsListViewOpen(false);
+
+        // 4. Open Bubble
         setEditingTaskId(taskId);
       }
     };
 
     const handleCompleteTask = (taskId: string) => {
-        const task = tasks.find(t => t.id === taskId);
-        if (task && !task.completed) {
-            handleUpdateTask({ ...task, completed: true });
-            audioService.playPop();
-            if (task.boardId !== currentBoardId && currentBoardId !== 'ALL') {
-                  setCurrentBoardId(task.boardId);
+        let taskUpdated = false;
+        setTasks(prev => prev.map(t => {
+            if (t.id === taskId && !t.completed) {
+                taskUpdated = true;
+                return { ...t, completed: true };
             }
-            setShowCompleted(true);
+            return t;
+        }));
+        
+        if (taskUpdated) {
+            audioService.playPop();
+            // Switch to board to see the effect
+            const task = tasks.find(t => t.id === taskId);
+            if (task) {
+                 if (task.boardId !== currentBoardId && currentBoardId !== 'ALL') {
+                      setCurrentBoardId(task.boardId);
+                 }
+                 // If not showing completed, maybe show it briefly or toast? 
+                 // For now, let's enable showCompleted so user sees the change
+                 setShowCompleted(true);
+            }
         }
     };
 
+    // A. Check URL Params (New Window / Page Load)
     const params = new URLSearchParams(window.location.search);
     const highlightId = params.get('highlight');
     const action = params.get('action');
@@ -212,6 +132,7 @@ const App: React.FC = () => {
         window.history.replaceState({}, '', window.location.pathname);
     }
 
+    // B. Check SW Messages (Focus Existing Window)
     const handleMessage = (event: MessageEvent) => {
         if (event.data && event.data.type === 'HIGHLIGHT_TASK' && event.data.taskId) {
             handleHighlightTask(event.data.taskId);
@@ -229,7 +150,7 @@ const App: React.FC = () => {
             navigator.serviceWorker.removeEventListener('message', handleMessage);
         }
     };
-  }, [tasks, boards, currentBoardId]); 
+  }, [tasks, boards, currentBoardId]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -242,14 +163,22 @@ const App: React.FC = () => {
   useEffect(() => {
       const handleOutsideClick = (e: PointerEvent) => {
           if (!isBoardMenuOpen) return;
+          
           const target = e.target as Node;
           const isMenuClick = boardMenuRef.current?.contains(target);
           const isButtonClick = boardButtonRef.current?.contains(target);
-          if (!isMenuClick && !isButtonClick) setIsBoardMenuOpen(false);
+          
+          if (!isMenuClick && !isButtonClick) {
+              setIsBoardMenuOpen(false);
+          }
       };
 
-      if (isBoardMenuOpen) document.addEventListener('pointerdown', handleOutsideClick, true);
-      return () => document.removeEventListener('pointerdown', handleOutsideClick, true);
+      if (isBoardMenuOpen) {
+          document.addEventListener('pointerdown', handleOutsideClick, true);
+      }
+      return () => {
+          document.removeEventListener('pointerdown', handleOutsideClick, true);
+      };
   }, [isBoardMenuOpen]);
 
   useEffect(() => {
@@ -272,12 +201,9 @@ const App: React.FC = () => {
     return tasks.filter(t => t.boardId === currentBoardId);
   }, [tasks, currentBoardId]);
 
-  // --- CRUD Handlers with Firebase support ---
-
   const handleAddTask = () => {
     let targetBoardId = currentBoardId;
     if (currentBoardId === 'ALL' || currentBoardId === 'COMPLETED') targetBoardId = boards[0]?.id || '1';
-    
     const newTask: Task = {
       id: uuidv4(),
       boardId: targetBoardId,
@@ -289,11 +215,8 @@ const App: React.FC = () => {
       x: window.innerWidth / 2, 
       y: window.innerHeight / 2
     };
-
     setTasks(prev => [...prev, newTask]);
     setEditingTaskId(newTask.id); 
-
-    if (user) db.saveTask(user.id, newTask);
   };
 
   const handleUpdateTask = (updatedTask: Task) => {
@@ -301,15 +224,11 @@ const App: React.FC = () => {
         setEditingTaskId(null);
         return;
     }
-    
     if (updatedTask.boardId !== currentBoardId && currentBoardId !== 'ALL' && currentBoardId !== 'COMPLETED') {
         const targetBoard = boards.find(b => b.id === updatedTask.boardId);
         if (targetBoard) setCurrentBoardId(targetBoard.id);
     }
-
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
-
-    if (user) db.saveTask(user.id, updatedTask);
   };
 
   const handleBatchUpdateTasks = (updatedTasks: Task[]) => {
@@ -317,15 +236,11 @@ const App: React.FC = () => {
           const updateMap = new Map(updatedTasks.map(t => [t.id, t]));
           return prev.map(t => updateMap.has(t.id) ? updateMap.get(t.id)! : t);
       });
-
-      if (user) db.saveTasksBatch(user.id, updatedTasks);
   };
 
   const handleDeleteTask = (taskId: string) => {
     setTasks(prev => prev.filter(t => t.id !== taskId));
     if (editingTaskId === taskId) setEditingTaskId(null);
-
-    if (user) db.deleteTask(user.id, taskId);
   };
 
   const handleToggleComplete = (task: Task) => {
@@ -336,19 +251,20 @@ const App: React.FC = () => {
     const newBoard = { id: uuidv4(), name };
     setBoards(prev => [...prev, newBoard]);
     setCurrentBoardId(newBoard.id);
-    if (user) db.saveBoard(user.id, newBoard);
   };
   
+  const handleUpdateBoard = (boardId: string, name: string) => {
+    setBoards(prev => prev.map(b => b.id === boardId ? { ...b, name } : b));
+  };
+
   const handleDeleteBoard = (boardId: string) => {
-      // Filter out tasks belonging to this board
-      const tasksToDelete = tasks.filter(t => t.boardId === boardId).map(t => t.id);
-      
-      setBoards(prev => prev.filter(b => b.id !== boardId));
-      setTasks(prev => prev.filter(t => t.boardId !== boardId));
-      
-      if (user) {
-          db.deleteBoard(user.id, boardId, tasksToDelete);
-      }
+    if (boards.length <= 1) return;
+    const newBoards = boards.filter(b => b.id !== boardId);
+    setBoards(newBoards);
+    setTasks(prev => prev.filter(t => t.boardId !== boardId));
+    if (currentBoardId === boardId) {
+        setCurrentBoardId(newBoards[0].id);
+    }
   };
 
   const getCurrentBoardName = () => {
@@ -370,16 +286,22 @@ const App: React.FC = () => {
 
   const handleBoardPointerMove = (e: React.PointerEvent) => {
     if (!dragStartRef.current) return;
+    
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
+    
     if (!isDraggingBoardRef.current && Math.hypot(dx, dy) > 10) {
         isDraggingBoardRef.current = true;
     }
+
     if (isDraggingBoardRef.current) {
         const elements = document.elementsFromPoint(e.clientX, e.clientY);
         const boardEl = elements.find(el => (el as HTMLElement).dataset.boardId) as HTMLElement | undefined;
-        if (boardEl) setDragHoveredBoardId(boardEl.dataset.boardId || null);
-        else setDragHoveredBoardId(null);
+        if (boardEl) {
+            setDragHoveredBoardId(boardEl.dataset.boardId || null);
+        } else {
+            setDragHoveredBoardId(null);
+        }
     }
   };
 
@@ -390,6 +312,7 @@ const App: React.FC = () => {
         setIsBoardMenuOpen(false);
       }
     }
+    
     dragStartRef.current = null;
     isDraggingBoardRef.current = false;
     setDragHoveredBoardId(null);
@@ -417,13 +340,11 @@ const App: React.FC = () => {
             setShowCompleted(false); 
         }}
         onCreateBoard={handleCreateBoard}
+        onUpdateBoard={handleUpdateBoard}
         onDeleteBoard={handleDeleteBoard}
         isHidden={!!editingTaskId}
         theme={theme}
-        onToggleTheme={handleToggleTheme}
-        user={user}
-        onSignIn={handleSignIn}
-        onSignOut={handleSignOut}
+        onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
       />
 
       <BubbleCanvas 

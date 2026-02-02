@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { v4 as uuidv4 } from 'uuid';
@@ -29,8 +30,8 @@ const toDateTimeLocal = (isoString?: string) => {
     } catch { return ""; }
 };
 
-// New Glass Primary Button Style for 'Done' - Updated to match transparency of other glass buttons
-const GLASS_BTN_PRIMARY_GLASS = "relative border flex items-center justify-center shrink-0 group outline-none overflow-hidden transition-all duration-200 active:scale-95 bg-white/30 dark:bg-white/10 border-white/40 dark:border-white/10 text-slate-900 dark:text-white shadow-lg hover:bg-white/50 dark:hover:bg-white/20 backdrop-blur-xl font-bold tracking-wide";
+// New Glass Primary Button Style for 'Done'
+const GLASS_BTN_PRIMARY_GLASS = "relative border flex items-center justify-center shrink-0 group outline-none overflow-hidden transition-all duration-200 active:scale-95 bg-white/60 dark:bg-slate-700/60 border-white/50 dark:border-white/10 text-slate-900 dark:text-white shadow-lg hover:bg-white/80 dark:hover:bg-slate-600/80 backdrop-blur-xl font-bold tracking-wide";
 
 export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, startPos, onUpdate, onDelete, onClose, onPop }) => {
   const [isCentered, setIsCentered] = useState(false);
@@ -47,6 +48,9 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   const isMobile = winDim.w < 768;
   const maxHeightRef = useRef(window.innerHeight);
   const lastEditStartTime = useRef(0);
+
+  // Local state for description editing to show save button
+  const [descriptionValue, setDescriptionValue] = useState(task.description || '');
 
   // Board Dropdown State
   const [isBoardMenuOpen, setIsBoardMenuOpen] = useState(false);
@@ -109,6 +113,21 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
   }, []);
 
   useEffect(() => { setHasText(!!task.title); }, [task.title]);
+  
+  // Update local description if task updates externally, but not if user is typing (avoid conflict?)
+  // Actually simpler: sync if changed from outside, but if user is actively typing, we rely on local state.
+  useEffect(() => { 
+      if (task.description !== descriptionValue) {
+        // Only update if task description changed and we aren't focused? 
+        // For simplicity, just sync if we haven't touched it, but here we assume single user.
+        // Let's just sync when task changes to ensure we have latest. 
+        // But if user has typed something that isn't saved, we might overwrite.
+        // We will just sync on mount or task switch.
+      }
+      // Re-sync logic: If the prop changes and it's different from our local state
+      // This happens if we switched tasks.
+      setDescriptionValue(task.description || '');
+  }, [task.id]); // Re-sync on task ID change
 
   useEffect(() => { 
       if (isEditing && textRef.current) {
@@ -126,7 +145,7 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
         textareaRef.current.style.height = 'auto';
         textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
     }
-  }, [task.description, showDescription]);
+  }, [descriptionValue, showDescription]);
 
   useEffect(() => {
     if (showSubtasks && subtaskInputRef.current) setTimeout(() => subtaskInputRef.current?.focus(), 100);
@@ -243,6 +262,10 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
       onUpdate({ ...task, subtasks: (task.subtasks || []).filter(s => s.id !== id) });
   };
 
+  const saveDescription = () => {
+    onUpdate({ ...task, description: descriptionValue });
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter') {
         if (!isMobile && !e.shiftKey) {
@@ -316,14 +339,24 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
         {showDescription && (
             <div className="w-full relative group">
                 <div className="absolute top-3 left-3 text-slate-500 dark:text-white/40 pointer-events-none"><AlignLeft size={16} /></div>
-                <textarea ref={textareaRef} rows={task.description ? 3 : 1} placeholder="Add a description..." value={task.description || ''} onChange={(e) => onUpdate({ ...task, description: e.target.value })} className="w-full transition-colors rounded-xl py-3 pl-10 pr-10 text-sm resize-none outline-none leading-relaxed custom-scrollbar bg-white/20 dark:bg-white/5 hover:bg-white/30 dark:hover:bg-white/10 focus:bg-white/40 dark:focus:bg-white/10 border border-white/30 dark:border-white/5 focus:border-slate-300 dark:focus:border-white/20 text-slate-900 dark:text-white placeholder:text-slate-500 dark:placeholder:text-white/30" style={{ minHeight: '46px', maxHeight: '120px' }} />
-                <button 
-                    onMouseDown={(e) => { e.preventDefault(); textareaRef.current?.blur(); }}
-                    className="absolute top-2.5 right-2.5 p-1.5 rounded-lg bg-white/20 dark:bg-white/5 border border-white/30 dark:border-white/10 text-slate-700 dark:text-white opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 active:opacity-100 hover:bg-white/40 dark:hover:bg-white/20 transition-all"
-                    title="Save Description"
-                >
-                    <Check size={16} />
-                </button>
+                <textarea 
+                    ref={textareaRef} 
+                    rows={task.description ? 3 : 1} 
+                    placeholder="Add a description..." 
+                    value={descriptionValue} 
+                    onChange={(e) => setDescriptionValue(e.target.value)} 
+                    className="w-full transition-colors rounded-xl py-3 pl-10 pr-10 text-sm resize-none outline-none leading-relaxed custom-scrollbar bg-white/20 dark:bg-white/5 hover:bg-white/30 dark:hover:bg-white/10 focus:bg-white/40 dark:focus:bg-white/10 border border-white/30 dark:border-white/5 focus:border-slate-300 dark:focus:border-white/20 text-slate-900 dark:text-white placeholder:text-slate-500 dark:placeholder:text-white/30" 
+                    style={{ minHeight: '46px', maxHeight: '120px' }} 
+                />
+                {descriptionValue !== (task.description || '') && (
+                     <button 
+                        onClick={saveDescription}
+                        className="absolute bottom-2 right-2 p-1.5 rounded-xl bg-white/40 dark:bg-slate-900/40 border border-white/40 dark:border-white/10 text-slate-800 dark:text-white hover:bg-white/60 dark:hover:bg-slate-900/60 hover:scale-105 transition-all shadow-sm backdrop-blur-md animate-in fade-in zoom-in"
+                        title="Save Description"
+                     >
+                        <Check size={14} strokeWidth={2.5} />
+                     </button>
+                )}
             </div>
         )}
         {showSubtasks && (
@@ -337,11 +370,11 @@ export const BubbleControls: React.FC<BubbleControlsProps> = ({ task, boards, st
                             <button onClick={() => deleteSubtask(sub.id)} className="opacity-0 group-hover:opacity-100 text-slate-400 dark:text-white/20 hover:text-red-500 dark:hover:text-red-400 transition-all px-1"><X size={14} /></button>
                         </div>
                     ))}
-                    <form onSubmit={handleAddSubtask} className="flex items-center gap-2 p-2 relative">
+                    <form onSubmit={handleAddSubtask} className="flex items-center gap-2 p-2">
                         <Plus size={16} className="text-slate-400 dark:text-white/30 shrink-0" />
                         <input ref={subtaskInputRef} type="text" value={newSubtaskTitle} onChange={(e) => setNewSubtaskTitle(e.target.value)} placeholder="Add subtask..." className="flex-1 bg-transparent outline-none text-sm text-slate-900 dark:text-white placeholder:text-slate-500 dark:placeholder:text-white/30" />
-                        <button type="submit" className="p-1.5 rounded-lg bg-white/20 dark:bg-white/5 border border-white/30 dark:border-white/10 text-slate-700 dark:text-white hover:bg-white/40 dark:hover:bg-white/20 transition-all shrink-0" title="Add Subtask">
-                            <Check size={16} />
+                        <button type="submit" className="p-1.5 rounded-xl bg-white/40 dark:bg-slate-900/40 border border-white/40 dark:border-white/10 text-slate-800 dark:text-white hover:bg-white/60 dark:hover:bg-slate-900/60 hover:scale-105 transition-all shadow-sm">
+                            <Check size={16} strokeWidth={2.5} />
                         </button>
                     </form>
                  </div>
