@@ -11,6 +11,13 @@ import { LayoutList } from 'lucide-react';
 import { notificationService } from './services/notificationService';
 import { audioService } from './services/audioService';
 
+const MOCK_USER: User = {
+  id: 'u1',
+  name: 'Alex Rivera',
+  email: 'alex.rivera@example.com',
+  avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'
+};
+
 const App: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>(() => {
     try {
@@ -33,6 +40,13 @@ const App: React.FC = () => {
 
   const [currentBoardId, setCurrentBoardId] = useState<string | 'ALL' | 'COMPLETED'>(() => {
      return localStorage.getItem('currentBoardId') || '1';
+  });
+
+  const [user, setUser] = useState<User | null>(() => {
+      try {
+          const saved = localStorage.getItem('user_session');
+          return saved ? JSON.parse(saved) : null;
+      } catch { return null; }
   });
 
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -64,6 +78,16 @@ const App: React.FC = () => {
         root.classList.remove('dark');
     }
   }, [theme]);
+
+  const handleLogin = () => {
+      setUser(MOCK_USER);
+      localStorage.setItem('user_session', JSON.stringify(MOCK_USER));
+  };
+
+  const handleLogout = () => {
+      setUser(null);
+      localStorage.removeItem('user_session');
+  };
 
   // Handle Notifications (Background/Foreground Bubble Opening & Actions)
   useEffect(() => {
@@ -345,6 +369,9 @@ const App: React.FC = () => {
         isHidden={!!editingTaskId}
         theme={theme}
         onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        user={user}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
       />
 
       <BubbleCanvas 

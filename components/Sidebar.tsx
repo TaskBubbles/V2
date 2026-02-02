@@ -1,8 +1,8 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { Menu, Plus, LayoutGrid, List, Trash2, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff, AlertTriangle, Download, Smartphone, Check, Pencil } from 'lucide-react';
-import { Board } from '../types';
+import { Menu, Plus, LayoutGrid, List, Trash2, Settings, X, Volume2, Bell, Moon, Sun, VolumeX, BellOff, AlertTriangle, Download, Smartphone, Check, Pencil, LogIn, LogOut, User as UserIcon } from 'lucide-react';
+import { Board, User } from '../types';
 import { audioService } from '../services/audioService';
 import { notificationService } from '../services/notificationService';
 import { FAB_BASE_CLASS, GLASS_PANEL_CLASS, GLASS_MENU_ITEM, GLASS_MENU_ITEM_ACTIVE, GLASS_MENU_ITEM_INACTIVE } from '../constants';
@@ -19,6 +19,9 @@ interface SidebarProps {
   isHidden?: boolean;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
+  user: User | null;
+  onLogin: () => void;
+  onLogout: () => void;
 }
 
 const Switch = ({ checked, iconOn, iconOff, colorClass = "from-blue-500 to-blue-600" }: { checked: boolean, iconOn?: React.ReactNode, iconOff?: React.ReactNode, colorClass?: string }) => (
@@ -33,7 +36,7 @@ const Switch = ({ checked, iconOn, iconOff, colorClass = "from-blue-500 to-blue-
     </div>
 );
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, currentBoardId, onSelectBoard, onCreateBoard, onUpdateBoard, onDeleteBoard, isHidden = false, theme, onToggleTheme }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, currentBoardId, onSelectBoard, onCreateBoard, onUpdateBoard, onDeleteBoard, isHidden = false, theme, onToggleTheme, user, onLogin, onLogout }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [newBoardName, setNewBoardName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -137,9 +140,38 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, boards, cur
       >
         <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent dark:from-white/5 dark:to-transparent pointer-events-none" />
         <div className="relative p-6 flex flex-col h-full text-slate-800 dark:text-slate-200">
-          <div className="mb-6 px-1 flex items-center gap-3">
+          <div className="mb-4 px-1 flex items-center gap-3">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight drop-shadow-sm">Task Bubbles</h2>
           </div>
+
+          <div className="mb-6 mx-0.5 p-3 rounded-2xl bg-white/40 dark:bg-white/5 border border-white/40 dark:border-white/10 flex items-center gap-3 shadow-sm transition-all duration-300">
+            {user ? (
+                <>
+                    <img src={user.avatarUrl} alt={user.name} className="w-10 h-10 rounded-full object-cover border border-white/50 bg-slate-200 dark:bg-slate-700 shrink-0" />
+                    <div className="flex-1 min-w-0 flex flex-col justify-center">
+                        <div className="font-bold text-sm text-slate-900 dark:text-white truncate leading-tight">{user.name}</div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate leading-tight">{user.email}</div>
+                    </div>
+                    <button onClick={onLogout} className="p-2 rounded-xl hover:bg-white/40 dark:hover:bg-white/10 transition-colors text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 shrink-0" title="Log Out">
+                        <LogOut size={18} />
+                    </button>
+                </>
+            ) : (
+                <>
+                    <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700/50 flex items-center justify-center text-slate-400 dark:text-slate-500 shrink-0">
+                        <UserIcon size={20} />
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
+                        <div className="font-bold text-sm text-slate-700 dark:text-slate-300">Guest User</div>
+                        <button onClick={onLogin} className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline text-left w-fit">Log In</button>
+                    </div>
+                    <button onClick={onLogin} className="p-2 rounded-xl hover:bg-white/40 dark:hover:bg-white/10 transition-colors text-blue-600 dark:text-blue-400 shrink-0" title="Log In">
+                        <LogIn size={18} />
+                    </button>
+                </>
+            )}
+          </div>
+
           <nav className="space-y-1.5 flex-1 overflow-y-auto no-scrollbar">
             <button onClick={() => { onSelectBoard('ALL'); setIsOpen(false); }} className={`${GLASS_MENU_ITEM} ${currentBoardId === 'ALL' ? GLASS_MENU_ITEM_ACTIVE : GLASS_MENU_ITEM_INACTIVE}`}>
                 <LayoutGrid size={18} /><span className="font-medium text-sm">All Tasks</span>
